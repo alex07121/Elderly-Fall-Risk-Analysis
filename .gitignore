@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Databases (auto-created at runtime)
+*.db
+
+# Installers (environment setup files, not source code)
+_安装包/
+
+# Frontend dependencies (also ignored by full-version/.gitignore)
+node_modules/
+
+# Temporary junction/link test files
+full-version/_jl
+full-version/_jt
+full-version/_jtest_link
+full-version/_jtest_tgt
+
+# IDE
+.vscode/
+.idea/
