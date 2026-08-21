@@ -17,6 +17,7 @@ REQUIRED_PACKAGES = [
     ("faker", "faker"),
     ("lime", "lime"),
     ("openpyxl", "openpyxl"),
+    ("reportlab", "reportlab"),
 ]
 
 print("Checking dependencies...")

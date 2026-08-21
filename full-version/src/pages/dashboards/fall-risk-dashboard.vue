@@ -6,10 +6,16 @@ import FallRiskTable from '@/views/dashboards/fall-risk/FallRiskTable.vue'
 // 删除记录后 +1，触发所有子组件重新加载
 const refreshKey = ref(0)
 provide('refreshKey', refreshKey)
+
+// 当 URL 携带 :id（detail 页面），渲染子路由；否则显示统计卡+图表+列表
+const route = useRoute()
+const isDetail = computed(() => !!route.params.id)
 </script>
 
 <template>
-  <div>
+  <RouterView v-if="isDetail" />
+
+  <div v-else>
     <FallRiskStats />
 
     <VRow class="mt-4">

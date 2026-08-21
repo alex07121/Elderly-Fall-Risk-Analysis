@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import jwt
 from pydantic import BaseModel, Field
@@ -23,6 +24,12 @@ import pandas as pd
 import random
 import json
 import asyncio
+from io import BytesIO
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 from backend.models import PatientRecord
 from backend.database import Base, engine, get_db, AsyncSessionLocal
@@ -246,6 +253,142 @@ def _record_to_dict(record: PatientRecord) -> dict:
     }
 
 
+def _format_dt(iso_str):
+    if not iso_str:
+        return "—"
+    try:
+        return datetime.fromisoformat(iso_str).strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return iso_str
+
+
+def generate_assessment_pdf(record: dict) -> bytes:
+    """Generate a printable PDF for a single assessment (for family / supervisor)."""
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        title=f"Fall Risk Assessment - {record.get('resident_id') or record['id']}",
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    body = []
+
+    # Title
+    body.append(Paragraph("Fall Risk Assessment Report", styles["Title"]))
+    body.append(Spacer(1, 0.3 * cm))
+
+    # Resident info
+    risk_level = record.get("fall_risk_level", "UNKNOWN")
+    risk_color = {
+        "HIGH": colors.HexColor("#EA5455"),
+        "MEDIUM": colors.HexColor("#FF9F43"),
+        "LOW": colors.HexColor("#28C76F"),
+    }.get(risk_level, colors.grey)
+
+    info_data = [
+        ["Resident ID:", record.get("resident_id") or f"#{record['id']}"],
+        ["Sex / Age:", f"{record.get('sex', '—') or '—'} / {record.get('age', '—')}"],
+        ["Assessed at:", _format_dt(record.get("created_at"))],
+    ]
+    info_tbl = Table(info_data, colWidths=[4 * cm, 12 * cm])
+    info_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#555")),
+    ]))
+    body.append(info_tbl)
+    body.append(Spacer(1, 0.5 * cm))
+
+    # Big risk banner
+    banner = Table([[f"{risk_level} RISK"]], colWidths=[16 * cm])
+    banner.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), risk_color),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 28),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 12),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+    ]))
+    body.append(banner)
+    body.append(Spacer(1, 0.6 * cm))
+
+    # Features
+    body.append(Paragraph("Resident Profile", styles["Heading2"]))
+    feat_data = [
+        ["Feature", "Value"],
+        ["Age", str(record.get("age", "—"))],
+        ["Sex", record.get("sex", "—") or "—"],
+        ["Night bed exits (per night)", str(record.get("night_bed_exits", "—"))],
+        ["Night activity duration (min)", str(record.get("night_activity_duration_min", "—"))],
+        ["Past falls (last year)", str(record.get("past_falls", "—"))],
+        ["Mobility score (1-10, higher = better)", str(record.get("mobility_score", "—"))],
+        ["High-risk medication", "Yes" if record.get("high_risk_medication") else "No"],
+        ["Cognitive impairment (0/1/2)", str(record.get("cognitive_impairment", "—"))],
+        ["Polypharmacy count", str(record.get("polypharmacy_count", "—"))],
+        ["Orthostatic hypotension", "Yes" if record.get("orthostatic_hypotension") else "No"],
+        ["TUG test (seconds)", str(record.get("tug_seconds", "—"))],
+    ]
+    feat_tbl = Table(feat_data, colWidths=[10 * cm, 6 * cm])
+    feat_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4472C4")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F5F5F5")]),
+    ]))
+    body.append(feat_tbl)
+    body.append(Spacer(1, 0.5 * cm))
+
+    # LIME explanations
+    lime = record.get("lime_explanations") or []
+    if lime:
+        body.append(Paragraph("Why this risk level", styles["Heading2"]))
+        for i, e in enumerate(lime, 1):
+            cond = e.get("condition", "")
+            weight = e.get("weight", 0)
+            direction = e.get("direction", "")
+            body.append(Paragraph(
+                f"{i}. {cond} <font color='#888'>(weight {weight:.3f}, {direction})</font>",
+                styles["Normal"],
+            ))
+        body.append(Spacer(1, 0.3 * cm))
+
+    # Interventions (key for family / supervisor)
+    interventions = record.get("intervention") or []
+    body.append(Paragraph("Recommended Care Interventions", styles["Heading2"]))
+    if interventions:
+        for it in interventions:
+            body.append(Paragraph(
+                f"<b>{it.get('label', '')}:</b> {it.get('action', '')}",
+                styles["Normal"],
+            ))
+            body.append(Spacer(1, 0.2 * cm))
+    else:
+        body.append(Paragraph("No specific intervention needed.", styles["Normal"]))
+
+    body.append(Spacer(1, 0.6 * cm))
+    body.append(Paragraph(
+        f"<i>Generated at {datetime.now().isoformat(timespec='seconds')} — "
+        f"This report is produced by the AI Fall Risk Assessment System for informational purposes. "
+        f"Care decisions should always be made by qualified medical professionals.</i>",
+        styles["Italic"],
+    ))
+
+    doc.build(body)
+    pdf = buf.getvalue()
+    buf.close()
+    return pdf
+
+
 @app.get("/assessments/summary")
 async def get_assessment_summary(db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """Summary stats for the dashboard: total + count by risk level."""
@@ -292,6 +435,22 @@ async def get_assessment(record_id: int, db: AsyncSession = Depends(get_db), cur
     if record is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
     return _record_to_dict(record)
+
+
+@app.get("/assessments/{record_id}/pdf")
+async def download_assessment_pdf(record_id: int, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Generate and download a printable PDF for this assessment."""
+    record = await db.get(PatientRecord, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    data = _record_to_dict(record)
+    pdf_bytes = generate_assessment_pdf(data)
+    filename = f"assessment-{data.get('resident_id') or record_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.delete("/assessments/all")
