@@ -16,6 +16,9 @@ async function load() {
 
 onMounted(load)
 
+const refreshKey = inject<Ref<number>>('refreshKey', ref(0))
+watch(refreshKey, load)
+
 const series = computed(() => [
   summary.value?.high ?? 0,
   summary.value?.medium ?? 0,

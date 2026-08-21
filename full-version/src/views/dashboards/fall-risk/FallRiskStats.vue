@@ -21,6 +21,9 @@ async function load() {
 
 onMounted(load)
 
+const refreshKey = inject<Ref<number>>('refreshKey', ref(0))
+watch(refreshKey, load)
+
 const cards = computed(() => [
   { label: 'Total Residents', value: summary.value?.total ?? 0, color: 'primary', icon: 'tabler-users' },
   { label: 'High Risk', value: summary.value?.high ?? 0, color: 'error', icon: 'tabler-alert-triangle' },

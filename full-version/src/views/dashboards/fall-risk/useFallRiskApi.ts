@@ -40,3 +40,22 @@ export async function apiGetById<T = any>(path: string): Promise<T> {
     timeout: 10000,
   })
 }
+
+export async function apiDelete<T = any>(path: string): Promise<T> {
+  const token = await ensureToken()
+  return ofetch<T>(`${BASE}${path}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+    timeout: 10000,
+  })
+}
+
+export async function apiPost<T = any>(path: string, body?: any): Promise<T> {
+  const token = await ensureToken()
+  return ofetch<T>(`${BASE}${path}`, {
+    method: 'POST',
+    body,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    timeout: 10000,
+  })
+}

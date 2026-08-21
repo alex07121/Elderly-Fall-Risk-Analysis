@@ -2,6 +2,10 @@
 import FallRiskStats from '@/views/dashboards/fall-risk/FallRiskStats.vue'
 import FallRiskDistribution from '@/views/dashboards/fall-risk/FallRiskDistribution.vue'
 import FallRiskTable from '@/views/dashboards/fall-risk/FallRiskTable.vue'
+
+// 删除记录后 +1，触发所有子组件重新加载
+const refreshKey = ref(0)
+provide('refreshKey', refreshKey)
 </script>
 
 <template>

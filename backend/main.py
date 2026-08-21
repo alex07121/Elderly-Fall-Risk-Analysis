@@ -294,6 +294,41 @@ async def get_assessment(record_id: int, db: AsyncSession = Depends(get_db), cur
     return _record_to_dict(record)
 
 
+@app.delete("/assessments/all")
+async def delete_all_assessments(db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Delete all assessment records (one-click clear)."""
+    from sqlalchemy import delete
+    await db.execute(delete(PatientRecord))
+    await db.commit()
+    return {"deleted": True}
+
+
+class BatchDeleteRequest(BaseModel):
+    ids: list[int]
+
+
+@app.post("/assessments/batch-delete")
+async def batch_delete_assessments(req: BatchDeleteRequest, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Delete multiple assessment records by id."""
+    from sqlalchemy import delete
+    if not req.ids:
+        return {"deleted": 0}
+    await db.execute(delete(PatientRecord).where(PatientRecord.id.in_(req.ids)))
+    await db.commit()
+    return {"deleted": len(req.ids)}
+
+
+@app.delete("/assessments/{record_id}")
+async def delete_assessment(record_id: int, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Delete a single assessment record."""
+    record = await db.get(PatientRecord, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    await db.delete(record)
+    await db.commit()
+    return {"deleted": record_id}
+
+
 # Gradio Prediction Logic
 async def predict_gradio(
         inputSex,

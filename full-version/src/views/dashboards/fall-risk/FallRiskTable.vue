@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { apiGet } from './useFallRiskApi'
+import { apiDelete, apiGet, apiPost } from './useFallRiskApi'
 
 const headers = [
   { title: 'Resident', key: 'resident' },
   { title: 'Risk Level', key: 'fall_risk_level' },
   { title: 'Age / Sex', key: 'age_sex' },
   { title: 'Assessed At', key: 'created_at' },
+  { title: 'Actions', key: 'actions', sortable: false },
 ]
 
 const itemsPerPage = ref(10)
@@ -15,6 +16,7 @@ const items = ref<any[]>([])
 const totalItems = ref(0)
 const loading = ref(false)
 const error = ref('')
+const selected = ref<any[]>([])
 
 const riskOptions = ['HIGH', 'MEDIUM', 'LOW']
 
@@ -42,6 +44,9 @@ onMounted(loadItems)
 
 watch([page, itemsPerPage, riskFilter], loadItems)
 
+const refreshKey = inject<Ref<number>>('refreshKey', ref(0))
+watch(refreshKey, loadItems)
+
 const router = useRouter()
 
 function openDetail(id: number) {
@@ -60,6 +65,48 @@ function riskColor(level: string) {
   if (level === 'MEDIUM')
     return 'warning'
   return 'success'
+}
+
+async function deleteOne(id: number) {
+  if (!window.confirm('Delete this assessment record?'))
+    return
+  try {
+    await apiDelete(`/assessments/${id}`)
+    refreshKey.value++
+  }
+  catch (e: any) {
+    error.value = e?.message || String(e)
+  }
+}
+
+async function deleteSelected() {
+  if (!selected.value.length)
+    return
+  if (!window.confirm(`Delete ${selected.value.length} selected record(s)?`))
+    return
+  try {
+    await apiPost('/assessments/batch-delete', { ids: selected.value })
+    selected.value = []
+    page.value = 1
+    refreshKey.value++
+  }
+  catch (e: any) {
+    error.value = e?.message || String(e)
+  }
+}
+
+async function clearAll() {
+  if (!window.confirm('Delete ALL assessment records? This cannot be undone.'))
+    return
+  try {
+    await apiDelete('/assessments/all')
+    selected.value = []
+    page.value = 1
+    refreshKey.value++
+  }
+  catch (e: any) {
+    error.value = e?.message || String(e)
+  }
 }
 </script>
 
@@ -83,17 +130,40 @@ function riskColor(level: string) {
 
     <VDivider />
 
+    <div class="d-flex flex-wrap gap-2 pa-4 pb-0">
+      <VBtn
+        color="error"
+        variant="tonal"
+        prepend-icon="tabler-trash"
+        :disabled="!selected.length"
+        @click="deleteSelected"
+      >
+        Delete Selected ({{ selected.length }})
+      </VBtn>
+
+      <VBtn
+        color="error"
+        variant="outlined"
+        prepend-icon="tabler-trash-x"
+        :disabled="!totalItems"
+        @click="clearAll"
+      >
+        Clear All
+      </VBtn>
+    </div>
+
     <VAlert
       v-if="error"
       color="error"
       variant="tonal"
       class="ma-4"
     >
-      Failed to load: {{ error }}
+      {{ error }}
     </VAlert>
 
     <VDataTableServer
       v-else
+      v-model="selected"
       v-model:items-per-page="itemsPerPage"
       v-model:page="page"
       :items="items"
@@ -101,6 +171,7 @@ function riskColor(level: string) {
       :headers="headers"
       :loading="loading"
       item-value="id"
+      show-select
       class="text-no-wrap"
       @click:row="(_: any, row: any) => openDetail(row.item.id)"
     >
@@ -133,6 +204,30 @@ function riskColor(level: string) {
 
       <template #item.created_at="{ item }">
         <span class="text-body-2">{{ formatDate(item.created_at) }}</span>
+      </template>
+
+      <template #item.actions="{ item }">
+        <div class="d-flex gap-1">
+          <VBtn
+            icon
+            size="small"
+            variant="text"
+            color="primary"
+            @click.stop="openDetail(item.id)"
+          >
+            <VIcon icon="tabler-eye" size="20" />
+          </VBtn>
+
+          <VBtn
+            icon
+            size="small"
+            variant="text"
+            color="error"
+            @click.stop="deleteOne(item.id)"
+          >
+            <VIcon icon="tabler-trash" size="20" />
+          </VBtn>
+        </div>
       </template>
 
       <template #bottom>
