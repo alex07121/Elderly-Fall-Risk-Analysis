@@ -21,6 +21,8 @@ from ml.predict import predict_fall_risk, explain_patient, recommend_interventio
 import gradio as gr
 import pandas as pd
 import random
+import json
+import asyncio
 
 from backend.models import PatientRecord
 from backend.database import Base, engine, get_db, AsyncSessionLocal
@@ -31,7 +33,7 @@ DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Literal
+from typing import Literal, Optional
 
 SECRET_KEY = "SUPER_SECRET_SECURITY_KEY_CHANGE_THIS_IN_PRODUCTION"
 ALGORITHM = "HS256"
@@ -114,6 +116,39 @@ class PatientData(BaseModel):
     polypharmacy_count: int = Field(..., ge=0, le=14)
     orthostatic_hypotension: int = Field(..., ge=0, le=1)
     tug_seconds: float = Field(..., ge=8.0, le=31.9)
+    resident_id: Optional[str] = None  # optional, links repeated assessments of the same resident
+
+
+# Map a risk feature to a concrete, staff-actionable care intervention.
+INTERVENTION_ACTIONS = {
+    "tug_seconds": ("Slow mobility", "Provide a walking aid, bedside handrails, and balance training"),
+    "past_falls": ("History of falls", "Increase supervision, bed rails, non-slip flooring"),
+    "high_risk_medication": ("High-risk medication", "Discuss with doctor about stopping or switching the drug"),
+    "polypharmacy_count": ("Polypharmacy", "Pharmacist review to reduce unnecessary medications"),
+    "orthostatic_hypotension": ("Orthostatic hypotension", "Rise slowly, monitor blood pressure, keep hydrated"),
+    "night_bed_exits": ("Frequent night-time bed exits", "Increase night checks, place a commode by the bed"),
+    "cognitive_impairment": ("Cognitive impairment", "Increase supervision, prevent wandering, orientation training"),
+    "mobility_score": ("Poor mobility", "Rehabilitation exercises and assistive devices"),
+    "age": ("Advanced age", "Increase care attention and regular reassessment"),
+    "night_activity_duration_min": ("Long night-time activity", "Review sleep quality and adjust routine"),
+}
+
+
+def build_interventions(features_dict: dict, lime_explanations: list) -> list:
+    """Translate LIME top risk factors into staff-actionable care interventions.
+
+    Returns a list of {feature, label, action}.
+    """
+    actions = []
+    seen = set()
+    for exp in lime_explanations:
+        # condition looks like "tug_seconds > 18.20" -> feature = "tug_seconds"
+        feat = str(exp.get("condition", "")).split()[0]
+        if feat in INTERVENTION_ACTIONS and feat not in seen:
+            seen.add(feat)
+            label, action = INTERVENTION_ACTIONS[feat]
+            actions.append({"feature": feat, "label": label, "action": action})
+    return actions
 
 
 app.add_middleware(
@@ -151,9 +186,11 @@ async def get_prediction(data: PatientData, db: AsyncSession = Depends(get_db), 
         result = predict_fall_risk(features_dict)
         lime_explanations = explain_patient(features_dict, max_features=3)
         suggestion = recommend_intervention(features_dict)
+        interventions = build_interventions(features_dict, lime_explanations)
 
         # Save feature profile & prediction output to database
         db_record = PatientRecord(
+            sex=features_dict.get("sex"),
             age=features_dict["age"],
             night_bed_exits=features_dict["night_bed_exits"],
             night_activity_duration_min=features_dict["night_activity_duration_min"],
@@ -164,21 +201,99 @@ async def get_prediction(data: PatientData, db: AsyncSession = Depends(get_db), 
             polypharmacy_count=features_dict["polypharmacy_count"],
             orthostatic_hypotension=features_dict["orthostatic_hypotension"],
             tug_seconds=features_dict["tug_seconds"],
-            fall_risk_level=result
+            fall_risk_level=result,
+            resident_id=features_dict.get("resident_id"),
+            lime_explanations=json.dumps(lime_explanations),
+            intervention=json.dumps(interventions),
         )
         db.add(db_record)
         await db.commit()
         
         # Return the exact JSON structure your friend asked for
         return {
+            "id": db_record.id,
             "fall_risk_level": result,
             "lime_explanations": lime_explanations,
-            "suggestion": suggestion
+            "suggestion": suggestion,
+            "interventions": interventions,
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
     
+# ---------- Assessment query endpoints (for the front-end dashboard) ----------
+
+def _record_to_dict(record: PatientRecord) -> dict:
+    """Convert a PatientRecord row into a JSON-friendly dict."""
+    return {
+        "id": record.id,
+        "sex": record.sex,
+        "age": record.age,
+        "night_bed_exits": record.night_bed_exits,
+        "night_activity_duration_min": record.night_activity_duration_min,
+        "past_falls": record.past_falls,
+        "mobility_score": record.mobility_score,
+        "high_risk_medication": record.high_risk_medication,
+        "cognitive_impairment": record.cognitive_impairment,
+        "polypharmacy_count": record.polypharmacy_count,
+        "orthostatic_hypotension": record.orthostatic_hypotension,
+        "tug_seconds": record.tug_seconds,
+        "fall_risk_level": record.fall_risk_level,
+        "resident_id": record.resident_id,
+        "lime_explanations": json.loads(record.lime_explanations) if record.lime_explanations else [],
+        "intervention": json.loads(record.intervention) if record.intervention else [],
+        "created_at": record.created_at.isoformat() if record.created_at else None,
+    }
+
+
+@app.get("/assessments/summary")
+async def get_assessment_summary(db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Summary stats for the dashboard: total + count by risk level."""
+    from sqlalchemy import func, select
+    result = await db.execute(
+        select(PatientRecord.fall_risk_level, func.count()).group_by(PatientRecord.fall_risk_level)
+    )
+    counts = {level: n for level, n in result.all()}
+    total = sum(counts.values())
+    return {
+        "total": total,
+        "high": counts.get("HIGH", 0),
+        "medium": counts.get("MEDIUM", 0),
+        "low": counts.get("LOW", 0),
+    }
+
+
+@app.get("/assessments")
+async def list_assessments(
+    page: int = 1,
+    itemsPerPage: int = 10,
+    risk_level: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Paginated list of assessment records, optionally filtered by risk level."""
+    from sqlalchemy import func, select
+    stmt = select(PatientRecord)
+    count_stmt = select(func.count()).select_from(PatientRecord)
+    if risk_level:
+        stmt = stmt.where(PatientRecord.fall_risk_level == risk_level)
+        count_stmt = count_stmt.where(PatientRecord.fall_risk_level == risk_level)
+    stmt = stmt.order_by(PatientRecord.created_at.desc()).offset((page - 1) * itemsPerPage).limit(itemsPerPage)
+    total = (await db.execute(count_stmt)).scalar() or 0
+    rows = (await db.execute(stmt)).scalars().all()
+    items = [_record_to_dict(r) for r in rows]
+    return {"items": items, "total": total}
+
+
+@app.get("/assessments/{record_id}")
+async def get_assessment(record_id: int, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Single assessment detail."""
+    record = await db.get(PatientRecord, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    return _record_to_dict(record)
+
+
 # Gradio Prediction Logic
 async def predict_gradio(
         inputSex,
@@ -390,8 +505,9 @@ def batch_predict_file(file):
     for c in ("high_risk_medication", "orthostatic_hypotension"):
         df[c] = df[c].apply(lambda v: _to_bool(v) if not pd.isna(v) else v)
 
-    rows = []
-    n_high = n_medium = n_low = n_err = 0
+    to_save = []
+    n_ok = 0
+    n_err = 0
     for idx, r in df.iterrows():
         pid = f"P{idx + 1:05d}"
         try:
@@ -412,44 +528,44 @@ def batch_predict_file(file):
 
             level = predict_fall_risk(feats)
             expl = explain_patient(feats, max_features=3)
-            reasons = "; ".join(e["condition"] for e in expl)
-            inter = recommend_intervention(feats)
-
-            if level == "HIGH":
-                best = inter.get("easiest_intervention", {})
-                feat = best.get("feature", "")
-                to_val = best.get("to")
-                if to_val is None:
-                    advice = f"{feat}: single change insufficient, needs combined intervention"
-                else:
-                    advice = f"{feat}: {best.get('from', '')} -> {to_val}"
-                n_high += 1
-            elif level == "MEDIUM":
-                advice = "Increase monitoring, reassess regularly"
-                n_medium += 1
-            else:
-                advice = "No intervention needed"
-                n_low += 1
-
-            rows.append({"ID": pid, "Risk Level": level,
-                         "Top Risk Factors": reasons, "Intervention": advice})
-        except Exception as e:
+            interventions = build_interventions(feats, expl)
+            to_save.append(PatientRecord(
+                sex=feats.get("sex"),
+                age=feats["age"],
+                night_bed_exits=feats["night_bed_exits"],
+                night_activity_duration_min=feats["night_activity_duration_min"],
+                past_falls=feats["past_falls"],
+                mobility_score=feats["mobility_score"],
+                high_risk_medication=feats["high_risk_medication"],
+                cognitive_impairment=feats["cognitive_impairment"],
+                polypharmacy_count=feats["polypharmacy_count"],
+                orthostatic_hypotension=feats["orthostatic_hypotension"],
+                tug_seconds=feats["tug_seconds"],
+                fall_risk_level=level,
+                resident_id=pid,
+                lime_explanations=json.dumps(expl),
+                intervention=json.dumps(interventions),
+            ))
+            n_ok += 1
+        except Exception:
             n_err += 1
-            rows.append({"ID": pid, "Risk Level": "Data Error",
-                         "Top Risk Factors": str(e), "Intervention": ""})
 
-    out = pd.DataFrame(rows)
-    total = len(out)
-    summary = (f"### Batch prediction complete\n\n"
-               f"- Total residents: **{total}**\n"
-               f"- HIGH risk: **{n_high}**\n"
-               f"- MEDIUM risk: **{n_medium}**\n"
-               f"- LOW risk: **{n_low}**\n"
-               f"- Data errors: **{n_err}**")
+    if to_save:
+        async def _save():
+            async with AsyncSessionLocal() as session:
+                session.add_all(to_save)
+                await session.commit()
+        asyncio.run(_save())
+
+    msg = (f"### ✅ Batch processed\n\n"
+           f"- Successfully saved: **{n_ok}** residents\n"
+           f"- Data errors skipped: **{n_err}** rows\n\n"
+           f"Please go to the **Risk Dashboard** to view the results:\n\n"
+           f"👉 [Open Risk Dashboard](http://localhost:5173/dashboards/fall-risk-dashboard)")
     if n_err:
-        summary += ("\n\n> Rows with errors are marked as \"Data Error\" in the "
-                    "results table. Please check the values are within range and not empty.")
-    return out, summary
+        msg += ("\n\n> Some rows were skipped due to invalid data. "
+                "Please check the values are within range and not empty.")
+    return msg
 
 
 # Build Gradio UI (single Blocks with two Tabs: single + batch)
@@ -575,9 +691,8 @@ with gr.Blocks() as interface:
         batch_file = gr.File(label="Upload filled Excel file (.xlsx)")
         batch_btn = gr.Button("Run Batch Prediction", variant="primary")
         batch_summary = gr.Markdown()
-        batch_output = gr.Dataframe(label="Prediction Results", wrap=True)
         batch_btn.click(fn=batch_predict_file, inputs=batch_file,
-                        outputs=[batch_output, batch_summary])
+                        outputs=[batch_summary])
 
 # Mount Gradio inside FastAPI application context properly
 app = gr.mount_gradio_app(app, interface, path="/")

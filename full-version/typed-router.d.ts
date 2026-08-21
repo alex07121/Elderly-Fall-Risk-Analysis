@@ -71,6 +71,8 @@ declare module 'vue-router/auto-routes' {
     'dashboards-crm': RouteRecordInfo<'dashboards-crm', '/dashboards/crm', Record<never, never>, Record<never, never>>,
     'dashboards-ecommerce': RouteRecordInfo<'dashboards-ecommerce', '/dashboards/ecommerce', Record<never, never>, Record<never, never>>,
     'dashboards-fall-risk': RouteRecordInfo<'dashboards-fall-risk', '/dashboards/fall-risk', Record<never, never>, Record<never, never>>,
+    'dashboards-fall-risk-dashboard': RouteRecordInfo<'dashboards-fall-risk-dashboard', '/dashboards/fall-risk-dashboard', Record<never, never>, Record<never, never>>,
+    'dashboards-fall-risk-dashboard-id': RouteRecordInfo<'dashboards-fall-risk-dashboard-id', '/dashboards/fall-risk-dashboard/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     'extensions-swiper': RouteRecordInfo<'extensions-swiper', '/extensions/swiper', Record<never, never>, Record<never, never>>,
     'extensions-tour': RouteRecordInfo<'extensions-tour', '/extensions/tour', Record<never, never>, Record<never, never>>,
     'forgot-password': RouteRecordInfo<'forgot-password', '/forgot-password', Record<never, never>, Record<never, never>>,
