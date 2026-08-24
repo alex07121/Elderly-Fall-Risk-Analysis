@@ -222,7 +222,7 @@ async function handleDownloadPdf() {
                 icon="tabler-first-aid-kit"
                 class="me-2"
               />
-              Recommended Care Interventions
+              suggestion
             </VCardTitle>
             <VCardSubtitle v-if="!interventions.length">
               No specific intervention needed for this resident.

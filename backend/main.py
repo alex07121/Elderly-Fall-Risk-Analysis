@@ -130,19 +130,291 @@ class PatientData(BaseModel):
     resident_id: Optional[str] = None  # optional, links repeated assessments of the same resident
 
 
-# Map a risk feature to a concrete, staff-actionable care intervention.
+# Map a risk feature to a plain-language, staff-actionable care instruction.
+# Written for frontline care-home staff: simple English, concrete actions,
+# no medical jargon and no citations (the evidence base lives in the docs).
 INTERVENTION_ACTIONS = {
-    "tug_seconds": ("Slow mobility", "Provide a walking aid, bedside handrails, and balance training"),
-    "past_falls": ("History of falls", "Increase supervision, bed rails, non-slip flooring"),
-    "high_risk_medication": ("High-risk medication", "Discuss with doctor about stopping or switching the drug"),
-    "polypharmacy_count": ("Polypharmacy", "Pharmacist review to reduce unnecessary medications"),
-    "orthostatic_hypotension": ("Orthostatic hypotension", "Rise slowly, monitor blood pressure, keep hydrated"),
-    "night_bed_exits": ("Frequent night-time bed exits", "Increase night checks, place a commode by the bed"),
-    "cognitive_impairment": ("Cognitive impairment", "Increase supervision, prevent wandering, orientation training"),
-    "mobility_score": ("Poor mobility", "Rehabilitation exercises and assistive devices"),
-    "age": ("Advanced age", "Increase care attention and regular reassessment"),
-    "night_activity_duration_min": ("Long night-time activity", "Review sleep quality and adjust routine"),
+    "tug_seconds": (
+        "Slow to get up and walk",
+        "Practice standing up and sitting down from a chair 10 times, twice a day. "
+        "Also practice balancing on one foot while holding a chair. If walking is "
+        "unsteady, ask the nurse about a walking stick."
+    ),
+    "past_falls": (
+        "Fell in the past year",
+        "A resident who has fallen needs a full check soon: blood pressure, eyesight, "
+        "feet and all medicines. Clear clutter, rugs and wires from the floor so they "
+        "cannot trip again."
+    ),
+    "high_risk_medication": (
+        "Takes a medicine that can cause falls",
+        "Ask the doctor if this medicine (sleeping pills, antidepressants, painkillers) "
+        "can be reduced or changed. Do not stop it on your own."
+    ),
+    "polypharmacy_count": (
+        "Takes many medicines",
+        "Arrange a pharmacist or doctor to review all medicines once a year, and stop "
+        "any that are not needed."
+    ),
+    "orthostatic_hypotension": (
+        "Feels dizzy when standing up",
+        "When getting up from bed or a chair, do it slowly: sit for 30 seconds first, "
+        "then stand for 30 seconds, then walk. Give plenty of water. Ask the doctor "
+        "about blood pressure medicines."
+    ),
+    "night_bed_exits": (
+        "Gets out of bed often at night",
+        "Stop drinks 2 hours before bedtime. Put a portable toilet (commode) next to "
+        "the bed. Keep a night light on and clear the path. Use non-slip slippers."
+    ),
+    "cognitive_impairment": (
+        "Memory problems",
+        "Keep to a simple daily routine. Remove clutter and keep the home well lit, "
+        "because the resident may not notice dangers. Do simple exercises together daily."
+    ),
+    "mobility_score": (
+        "Weak legs",
+        "Help the resident do leg exercises every day: lift knees, stand up from a "
+        "chair 10 times, and hold onto a chair while lifting one foot. 30 minutes, "
+        "3 times a week."
+    ),
+    "age": (
+        "Older age",
+        "Keep the resident active and moving every day. Encourage daily walks with "
+        "supervision, and check for new hazards at home."
+    ),
+    "night_activity_duration_min": (
+        "Awake and moving a lot at night",
+        "Check if the resident is in pain or needs the toilet at night. Keep the "
+        "bedroom quiet and cool. Tell the nurse if they wake often, so sleep can be checked."
+    ),
 }
+
+# Age-band-aware version for 60-70 year olds: same plain language, but with more
+# sensitive thresholds and an "early prevention" tone (per the age-banded doc, Section 4).
+INTERVENTION_ACTIONS_60_70 = {
+    "tug_seconds": (
+        "Walks slower than expected for age 60-70",
+        "Start balance and leg training NOW, 3 times a week for 30 minutes: stand up "
+        "and sit down, walk heel-to-toe, balance on one foot holding a chair. Even "
+        "slightly slow walking at this age should be treated early."
+    ),
+    "past_falls": (
+        "Fell at least once this year (age 60-70)",
+        "Book a full check within this week: blood pressure standing up, eyesight, "
+        "feet and all medicines. At age 60-70 a fall is an early warning - fix the "
+        "cause now before more falls."
+    ),
+    "high_risk_medication": (
+        "Takes a fall-risk medicine",
+        "Ask the doctor to review this medicine (sleeping pills, antidepressants, "
+        "antipsychotics, painkillers). Reducing or changing it can cut falls a lot. "
+        "Never stop it without the doctor."
+    ),
+    "polypharmacy_count": (
+        "Takes 5 or more medicines",
+        "Book a pharmacist review of all medicines once a year. Ask to stop medicines "
+        "that are not needed, and avoid too many at once."
+    ),
+    "orthostatic_hypotension": (
+        "Dizzy or light-headed when standing",
+        "Teach the 3-step rise: lie still 30 seconds, sit 30 seconds, stand 30 seconds, "
+        "then walk. Give 6-8 glasses of water a day. Ask the doctor to check blood "
+        "pressure medicines."
+    ),
+    "night_bed_exits": (
+        "Gets up to toilet 3+ times a night",
+        "No drinks 2 hours before bed. Put a commode next to the bed. Night light on. "
+        "Non-slip slippers. Ask the doctor about prostate (men) or bladder (women) problems."
+    ),
+    "cognitive_impairment": (
+        "Mild memory problems",
+        "Do simple exercises with the resident daily (walking, standing up, reaching). "
+        "Keep routine simple and familiar. Ask the doctor for a memory test to find "
+        "the cause."
+    ),
+    "mobility_score": (
+        "Weak legs / poor balance",
+        "Start a daily leg and balance routine: stand up from a chair 10 times, "
+        "heel-to-toe walk, one-foot balance holding a chair. 30 minutes, 3+ times a "
+        "week. Ask a physiotherapist for help if very weak."
+    ),
+    "age": (
+        "Age 60-70 (early prevention window)",
+        "This is the best age to prevent falls. Keep exercise going 3+ times a week, "
+        "and do a yearly check of medicines, eyesight and home safety."
+    ),
+    "night_activity_duration_min": (
+        "Awake long periods at night",
+        "Check for pain or loud snoring (possible sleep problem). Keep the night "
+        "routine calm. If the resident cannot sleep, tell the nurse - try other ways "
+        "before sleeping pills."
+    ),
+}
+
+
+def _suggest_60_70(feature: str, value):
+    """Value-band stratified staff instruction for a 60-70 year old.
+
+    Returns (status_label, action) based on the feature's actual value.
+    Bands follow docs/Feature_Value_Stratified_Interventions.docx (thresholds:
+    TUG 8.5/12/13.5/20 s; polypharmacy 5/8/11; nocturia 2/3-4/5+; etc.).
+    Returns (None, None) if the feature is not stratified at this band.
+    """
+    if value is None or isinstance(value, str):
+        return None, None
+    v = value
+
+    if feature == "tug_seconds":
+        if v < 8.5:
+            return "Normal", "Keep active; no action needed yet."
+        if v < 12.0:
+            return ("Mildly slow (60-70 sensitive)",
+                    "Start balance and leg training NOW, 3 times a week for 30 minutes: "
+                    "stand up and sit down 10 times, walk heel-to-toe, balance on one foot "
+                    "holding a chair.")
+        if v < 13.5:
+            return ("Approaching high risk",
+                    "Keep the training going and ask the physiotherapist to check the walking pattern.")
+        if v < 20.0:
+            return ("High fall risk",
+                    "Ask the physiotherapist to start a falls-prevention plan and check whether "
+                    "a walking stick is needed.")
+        return ("Severe",
+                "Ask the occupational therapist to check transfers and the bedroom/bathroom route.")
+
+    if feature == "mobility_score":
+        if v >= 8:
+            return "Independent", "Maintain exercise; keep the annual review."
+        if v >= 5:
+            return ("Reduced mobility",
+                    "Help the resident do leg and balance exercises 3 times a week for 30 minutes: "
+                    "stand up from a chair 10 times, heel-to-toe walk, one-foot balance. Ask the "
+                    "physiotherapist if there is no improvement after 6 weeks.")
+        return ("Severely reduced mobility",
+                "Ask the physiotherapist to assess the resident and consider a walking aid.")
+
+    if feature == "past_falls":
+        if v < 1:
+            return "No fall", "No special action; keep the yearly check."
+        if v < 2:
+            return ("Fell once this year",
+                    "Book a full check this week: blood pressure standing up, eyesight, feet, "
+                    "and all medicines.")
+        return ("Fell 2 or more times",
+                "Same full check as above, plus ask the doctor for a falls clinic or "
+                "geriatrician referral.")
+
+    if feature == "polypharmacy_count":
+        if v < 5:
+            return "Low", "Keep the yearly medication review."
+        if v < 8:
+            return ("Takes 5-7 medicines",
+                    "Book a pharmacist review of all medicines once a year; ask to stop any "
+                    "that are not needed.")
+        if v < 11:
+            return ("Takes 8-10 medicines",
+                    "Ask the pharmacist to review all medicines every 6 months.")
+        return ("Takes 11+ medicines",
+                "Ask the pharmacist to review all medicines every 3 months and simplify the "
+                "list as much as possible.")
+
+    if feature == "night_bed_exits":
+        if v < 2:
+            return "Normal", "No special action."
+        if v < 3:
+            return ("Gets up once or twice at night",
+                    "No drinks 2 hours before bedtime and avoid evening coffee or tea.")
+        if v < 5:
+            return ("Gets up 3-4 times at night",
+                    "Put a commode next to the bed, keep a night light on, clear the floor path, "
+                    "and use non-slip slippers.")
+        return ("Gets up 5+ times at night",
+                "Same as above, plus ask the doctor about prostate (men) or bladder (women) "
+                "problems, and tell the night nurse to do regular checks.")
+
+    if feature == "night_activity_duration_min":
+        if v <= 30:
+            return "Normal", "No special action."
+        if v <= 60:
+            return ("Awake 30-60 min at night",
+                    "Check for pain or needing the toilet at night. Keep the bedroom quiet and "
+                    "cool. Tell the nurse if this happens most nights.")
+        return ("Awake over 1 hour at night",
+                "Ask the nurse to check for a sleep problem (e.g. loud snoring). Try a calm night "
+                "routine before using sleeping pills.")
+
+    if feature == "cognitive_impairment":
+        if v < 1:
+            return "None", "No special action."
+        if v < 2:
+            return ("Mild memory problems",
+                    "Do simple exercises with the resident daily (walking, standing up, reaching). "
+                    "Keep the routine simple and familiar. Ask the doctor for a memory test.")
+        return ("Moderate to severe memory problems",
+                "Keep the resident in a supervised daily routine, remove clutter and keep the home "
+                "well lit, and ask the doctor to review all medicines.")
+
+    if feature == "orthostatic_hypotension":
+        if v < 1:
+            return "None", "No special action."
+        return ("Dizzy when standing up",
+                "Teach the 3-step rise: lie still 30 seconds, sit 30 seconds, stand 30 seconds, "
+                "then walk. Give 6-8 glasses of water a day. Ask the doctor to check blood "
+                "pressure medicines.")
+
+    if feature == "high_risk_medication":
+        if v < 1:
+            return "None", "Keep the yearly medicine review."
+        return ("Takes a fall-risk medicine",
+                "Ask the doctor to review this medicine (sleeping pills, antidepressants, "
+                "painkillers). Reducing or changing it can cut falls a lot. Never stop it "
+                "without the doctor.")
+
+    if feature == "age":
+        if v < 71:
+            return ("Age 60-70 (early prevention window)",
+                    "This is the best age to prevent falls. Keep exercise going 3+ times a week, "
+                    "and do a yearly check of medicines, eyesight and home safety.")
+        return None, None  # 71+ handled by the generic map
+
+    if feature == "days_since_last_fall":
+        if v is None or v >= 365:
+            return "No recent fall", "Keep the yearly check."
+        if v < 30:
+            return ("Fell very recently (within a month)",
+                    "Book the full fall check THIS WEEK (blood pressure, eyesight, feet, medicines).")
+        return ("Fell in the last 1-6 months",
+                "Book the full fall check within a month.")
+
+    if feature == "sex":
+        if str(value).upper().startswith("F"):
+            return ("Female", "Check for needing the toilet often at night; ask about a bedside "
+                    "commode. Ask the doctor about a bone check (DXA).")
+        return ("Male", "Check alcohol use and ask the doctor to check blood pressure when "
+                "standing up, especially if on blood pressure tablets.")
+
+    return None, None
+
+
+# Known model-input feature names (for extracting the feature from a LIME condition).
+KNOWN_FEATURES = {
+    "sex", "age", "night_bed_exits", "night_activity_duration_min", "past_falls",
+    "mobility_score", "high_risk_medication", "cognitive_impairment",
+    "polypharmacy_count", "orthostatic_hypotension", "tug_seconds",
+}
+
+
+def _extract_feature(condition) -> str | None:
+    """Extract the feature name from a LIME condition.
+
+    LIME can produce either 'tug_seconds > 15.60' or '14.70 < tug_seconds <= 18.20'.
+    The simple split()[0] approach fails on the second format, so scan all tokens.
+    """
+    for tok in str(condition).replace(">=", " ").replace("<=", " ").replace(">", " ").replace("<", " ").split():
+        if tok in KNOWN_FEATURES:
+            return tok
+    return None
 
 
 def build_interventions(features_dict: dict, lime_explanations: list) -> list:
@@ -158,26 +430,40 @@ def build_interventions(features_dict: dict, lime_explanations: list) -> list:
     if features_dict.get("syncopal_fall") == 1:
         actions.append({
             "feature": "syncopal_fall",
-            "label": "Syncopal falls (loss of consciousness)",
-            "action": ("Refer to a cardiology / syncope clinic: check orthostatic BP, "
-                       "arrhythmia and valvular disease; review antihypertensives and vasodilators"),
+            "label": "Fell and lost consciousness",
+            "action": ("This is serious - tell the doctor and arrange a heart check soon. "
+                       "The fall may be caused by the heart or blood pressure, not by weak legs."),
         })
         seen.add("syncopal_fall")
 
     if features_dict.get("fall_cluster_30d") == 1:
         actions.append({
             "feature": "fall_cluster_30d",
-            "label": "Acute fall clustering (2+ falls within 30 days)",
-            "action": ("Investigate an acute trigger: newly started medication, acute infection, "
-                       "hypoglycemia, or acute vertigo (BPPV); consider urgent review"),
+            "label": "Fell 2 or more times in the last month",
+            "action": ("Find out what changed: a new medicine, fever, low blood sugar, or dizziness. "
+                       "If the cause is not clear within 2 days, take the resident to the doctor or emergency."),
         })
         seen.add("fall_cluster_30d")
 
+    # 60-70 year olds: value-band stratified suggestions (sensitive thresholds).
+    # 71+: falls back to the generic plain-language map (71-80/81-100 bands to be added).
+    age = features_dict.get("age", 71)
+    is_60_70 = isinstance(age, (int, float)) and age <= 70
+
     for exp in lime_explanations:
-        # condition looks like "tug_seconds > 18.20" -> feature = "tug_seconds"
-        feat = str(exp.get("condition", "")).split()[0]
-        if feat in INTERVENTION_ACTIONS and feat not in seen:
-            seen.add(feat)
+        # LIME condition may be "tug_seconds > 15.60" or "14.70 < tug_seconds <= 18.20"
+        feat = _extract_feature(exp.get("condition", ""))
+        if feat is None or feat in seen:
+            continue
+        seen.add(feat)
+
+        if is_60_70:
+            status, action = _suggest_60_70(feat, features_dict.get(feat))
+            if action:
+                actions.append({"feature": feat, "label": status, "action": action})
+            continue
+
+        if feat in INTERVENTION_ACTIONS:
             label, action = INTERVENTION_ACTIONS[feat]
             actions.append({"feature": feat, "label": label, "action": action})
     return actions
@@ -958,6 +1244,9 @@ with gr.Blocks() as interface:
 | polypharmacy_count | Number, 0–14 |
 | orthostatic_hypotension | Select "Yes" or "No" |
 | tug_seconds | Number, 8–31.9 (seconds) |
+| days_since_last_fall | Number, 0–365 (empty if past_falls=0) |
+| syncopal_fall | Select "Yes" or "No" (fall with loss of consciousness) |
+| fall_cluster_30d | Select "Yes" or "No" (≥2 falls within 30 days) |
 
 > Values out of range are marked as "Data Error". Please fill within range.
 """)
