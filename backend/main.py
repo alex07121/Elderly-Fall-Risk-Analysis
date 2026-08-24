@@ -123,6 +123,10 @@ class PatientData(BaseModel):
     polypharmacy_count: int = Field(..., ge=0, le=14)
     orthostatic_hypotension: int = Field(..., ge=0, le=1)
     tug_seconds: float = Field(..., ge=8.0, le=31.9)
+    # Extended fall-detail fields (NOT model inputs; used only for intervention routing)
+    days_since_last_fall: Optional[int] = Field(None, ge=0)
+    syncopal_fall: int = Field(0, ge=0, le=1)
+    fall_cluster_30d: int = Field(0, ge=0, le=1)
     resident_id: Optional[str] = None  # optional, links repeated assessments of the same resident
 
 
@@ -144,10 +148,31 @@ INTERVENTION_ACTIONS = {
 def build_interventions(features_dict: dict, lime_explanations: list) -> list:
     """Translate LIME top risk factors into staff-actionable care interventions.
 
-    Returns a list of {feature, label, action}.
+    Returns a list of {feature, label, action}. Acute/syncopal fall flags are
+    prepended (routed to medical workup) ahead of the LIME-derived advice.
     """
     actions = []
     seen = set()
+
+    # Prepend acute/syncopal routing (these flags are NOT model inputs).
+    if features_dict.get("syncopal_fall") == 1:
+        actions.append({
+            "feature": "syncopal_fall",
+            "label": "Syncopal falls (loss of consciousness)",
+            "action": ("Refer to a cardiology / syncope clinic: check orthostatic BP, "
+                       "arrhythmia and valvular disease; review antihypertensives and vasodilators"),
+        })
+        seen.add("syncopal_fall")
+
+    if features_dict.get("fall_cluster_30d") == 1:
+        actions.append({
+            "feature": "fall_cluster_30d",
+            "label": "Acute fall clustering (2+ falls within 30 days)",
+            "action": ("Investigate an acute trigger: newly started medication, acute infection, "
+                       "hypoglycemia, or acute vertigo (BPPV); consider urgent review"),
+        })
+        seen.add("fall_cluster_30d")
+
     for exp in lime_explanations:
         # condition looks like "tug_seconds > 18.20" -> feature = "tug_seconds"
         feat = str(exp.get("condition", "")).split()[0]
@@ -208,6 +233,9 @@ async def get_prediction(data: PatientData, db: AsyncSession = Depends(get_db), 
             polypharmacy_count=features_dict["polypharmacy_count"],
             orthostatic_hypotension=features_dict["orthostatic_hypotension"],
             tug_seconds=features_dict["tug_seconds"],
+            days_since_last_fall=features_dict.get("days_since_last_fall"),
+            syncopal_fall=features_dict.get("syncopal_fall", 0),
+            fall_cluster_30d=features_dict.get("fall_cluster_30d", 0),
             fall_risk_level=result,
             resident_id=features_dict.get("resident_id"),
             lime_explanations=json.dumps(lime_explanations),
@@ -245,6 +273,9 @@ def _record_to_dict(record: PatientRecord) -> dict:
         "polypharmacy_count": record.polypharmacy_count,
         "orthostatic_hypotension": record.orthostatic_hypotension,
         "tug_seconds": record.tug_seconds,
+        "days_since_last_fall": record.days_since_last_fall,
+        "syncopal_fall": record.syncopal_fall,
+        "fall_cluster_30d": record.fall_cluster_30d,
         "fall_risk_level": record.fall_risk_level,
         "resident_id": record.resident_id,
         "lime_explanations": json.loads(record.lime_explanations) if record.lime_explanations else [],
@@ -334,6 +365,9 @@ def generate_assessment_pdf(record: dict) -> bytes:
         ["Polypharmacy count", str(record.get("polypharmacy_count", "—"))],
         ["Orthostatic hypotension", "Yes" if record.get("orthostatic_hypotension") else "No"],
         ["TUG test (seconds)", str(record.get("tug_seconds", "—"))],
+        ["Days since last fall", str(record.get("days_since_last_fall") if record.get("days_since_last_fall") is not None else "—")],
+        ["Syncopal fall (loss of consciousness)", "Yes" if record.get("syncopal_fall") else "No"],
+        ["Acute fall cluster (2+ in 30 days)", "Yes" if record.get("fall_cluster_30d") else "No"],
     ]
     feat_tbl = Table(feat_data, colWidths=[10 * cm, 6 * cm])
     feat_tbl.setStyle(TableStyle([
@@ -500,7 +534,10 @@ async def predict_gradio(
         inputCognitiveImpairment,
         inputPolypharmacyCount,
         inputOrthostaticHypotension,
-        inputTugSeconds
+        inputTugSeconds,
+        inputDaysSinceLastFall,
+        inputSyncopalFall,
+        inputFallCluster30d
     ):
     profile = PatientData(
         sex=_to_sex(inputSex),
@@ -513,7 +550,10 @@ async def predict_gradio(
         cognitive_impairment=int(inputCognitiveImpairment), 
         polypharmacy_count=int(inputPolypharmacyCount), 
         orthostatic_hypotension=1 if inputOrthostaticHypotension else 0, 
-        tug_seconds=float(inputTugSeconds)
+        tug_seconds=float(inputTugSeconds),
+        days_since_last_fall=int(inputDaysSinceLastFall) if inputDaysSinceLastFall else None,
+        syncopal_fall=1 if inputSyncopalFall else 0,
+        fall_cluster_30d=1 if inputFallCluster30d else 0,
     )
 
     async with AsyncSessionLocal() as session:
@@ -556,6 +596,9 @@ def random_gradio():
         first_row.get("polypharmacy_count"),
         first_row.get("orthostatic_hypotension"),
         first_row.get("tug_seconds"),
+        first_row.get("days_since_last_fall") or 0,
+        bool(first_row.get("syncopal_fall")) if first_row.get("syncopal_fall") is not None else False,
+        bool(first_row.get("fall_cluster_30d")) if first_row.get("fall_cluster_30d") is not None else False,
     )
 
 
@@ -570,6 +613,9 @@ COLUMN_MAP = {
     "认知障碍程度": "cognitive_impairment", "多重用药数量": "polypharmacy_count",
     "是否有体位性低血压": "orthostatic_hypotension",
     "起立行走测试(秒)": "tug_seconds", "起立行走测试": "tug_seconds",
+    "距上次跌倒天数": "days_since_last_fall",
+    "是否晕厥跌倒": "syncopal_fall", "跌倒时是否失去意识": "syncopal_fall",
+    "30天内是否连续跌倒": "fall_cluster_30d", "30天内连续跌倒": "fall_cluster_30d",
 }
 
 FEATURE_CN = {
@@ -626,7 +672,8 @@ def _build_excel_template(path):
     headers = ["sex", "age", "night_bed_exits", "night_activity_duration_min",
                "past_falls", "mobility_score", "high_risk_medication",
                "cognitive_impairment", "polypharmacy_count",
-               "orthostatic_hypotension", "tug_seconds"]
+               "orthostatic_hypotension", "tug_seconds",
+               "days_since_last_fall", "syncopal_fall", "fall_cluster_30d"]
     ws.append(headers)
 
     for cell in ws[1]:
@@ -642,9 +689,12 @@ def _build_excel_template(path):
     dv_yesno.add("G2:G2000")
     dv_cog.add("H2:H2000")
     dv_yesno.add("J2:J2000")
+    dv_yesno.add("M2:M2000")
+    dv_yesno.add("N2:N2000")
 
     widths = {"A": 10, "B": 8, "C": 16, "D": 24, "E": 12, "F": 16,
-              "G": 20, "H": 18, "I": 18, "J": 22, "K": 14}
+              "G": 20, "H": 18, "I": 18, "J": 22, "K": 14,
+              "L": 20, "M": 16, "N": 20}
     for col, w in widths.items():
         ws.column_dimensions[col].width = w
 
@@ -698,6 +748,9 @@ def batch_predict_file(file):
         df["sex"] = df["sex"].apply(lambda v: _to_sex(v) if not pd.isna(v) else v)
     for c in ("high_risk_medication", "orthostatic_hypotension"):
         df[c] = df[c].apply(lambda v: _to_bool(v) if not pd.isna(v) else v)
+    for c in ("syncopal_fall", "fall_cluster_30d"):
+        if c in df.columns:
+            df[c] = df[c].apply(lambda v: _to_bool(v) if not pd.isna(v) else 0)
 
     to_save = []
     n_ok = 0
@@ -720,6 +773,17 @@ def batch_predict_file(file):
                         raise ValueError(f"{c}={v} out of range {lo}~{hi}")
                 feats[c] = v
 
+            # Optional extended fall-detail fields (default if column absent).
+            feats["days_since_last_fall"] = None
+            feats["syncopal_fall"] = 0
+            feats["fall_cluster_30d"] = 0
+            if "days_since_last_fall" in df.columns and not pd.isna(r["days_since_last_fall"]):
+                feats["days_since_last_fall"] = int(r["days_since_last_fall"])
+            if "syncopal_fall" in df.columns and not pd.isna(r["syncopal_fall"]):
+                feats["syncopal_fall"] = int(r["syncopal_fall"])
+            if "fall_cluster_30d" in df.columns and not pd.isna(r["fall_cluster_30d"]):
+                feats["fall_cluster_30d"] = int(r["fall_cluster_30d"])
+
             level = predict_fall_risk(feats)
             expl = explain_patient(feats, max_features=3)
             interventions = build_interventions(feats, expl)
@@ -735,6 +799,9 @@ def batch_predict_file(file):
                 polypharmacy_count=feats["polypharmacy_count"],
                 orthostatic_hypotension=feats["orthostatic_hypotension"],
                 tug_seconds=feats["tug_seconds"],
+                days_since_last_fall=feats.get("days_since_last_fall"),
+                syncopal_fall=feats.get("syncopal_fall", 0),
+                fall_cluster_30d=feats.get("fall_cluster_30d", 0),
                 fall_risk_level=level,
                 resident_id=pid,
                 lime_explanations=json.dumps(expl),
@@ -827,6 +894,17 @@ with gr.Blocks() as interface:
                     label="起立行走测试(秒)", 
                     value=8.0
                 )
+                inputDaysSinceLastFall = gr.Number(
+                    minimum=0,
+                    label="距上次跌倒天数（0=没跌过）",
+                    value=0
+                )
+                inputSyncopalFall = gr.Checkbox(
+                    label="跌倒时是否失去意识（晕厥）"
+                )
+                inputFallCluster30d = gr.Checkbox(
+                    label="30天内是否连续跌倒≥2次"
+                )
                 random_btn = gr.Button("随机生成示例老人资料")
                 submit_btn = gr.Button("提交预测")
 
@@ -839,7 +917,8 @@ with gr.Blocks() as interface:
             outputs=[
                 inputAge, inputNightBedExits, inputNightActivityDurationMin, 
                 inputPastFalls, inputMobilityScore, inputHighRiskMed, inputCognitiveImpairment,
-                inputPolypharmacyCount, inputOrthostaticHypotension, inputTugSeconds
+                inputPolypharmacyCount, inputOrthostaticHypotension, inputTugSeconds,
+                inputDaysSinceLastFall, inputSyncopalFall, inputFallCluster30d
             ]
         )
 
@@ -848,7 +927,8 @@ with gr.Blocks() as interface:
             inputs=[
                 inputSex, inputAge, inputPastFalls, inputMobilityScore, inputNightBedExits, 
                 inputNightActivityDurationMin, inputHighRiskMed, inputCognitiveImpairment,
-                inputPolypharmacyCount, inputOrthostaticHypotension, inputTugSeconds
+                inputPolypharmacyCount, inputOrthostaticHypotension, inputTugSeconds,
+                inputDaysSinceLastFall, inputSyncopalFall, inputFallCluster30d
             ], 
             outputs=output
         )

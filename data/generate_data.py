@@ -145,6 +145,23 @@ for i in range(N):
     else:
         pf.append(random.choices([2, 3, 4, 5], weights=[0.62, 0.24, 0.10, 0.04], k=1)[0])
 
+# ---------- 10.5 扩展跌倒细节字段（不进模型，仅干预建议用） ----------
+# days_since_last_fall: past_falls=0 时留空；否则近期偏态分布(中位数约 31 天)
+# syncopal_fall: 仅 past_falls>=1 时约 25% 为 1（晕厥性跌倒）
+# fall_cluster_30d: 仅 past_falls>=2 时约 25% 为 1（30 天内连续跌倒）
+dslf = []
+syncopal = []
+cluster = []
+for i in range(N):
+    if pf[i] == 0:
+        dslf.append('')
+        syncopal.append(0)
+        cluster.append(0)
+    else:
+        dslf.append(min(365, int(random.expovariate(1.0 / 45.0))))
+        syncopal.append(1 if random.random() < 0.25 else 0)
+        cluster.append(1 if pf[i] >= 2 and random.random() < 0.25 else 0)
+
 # ---------- 输出: fall_risk_score ----------
 def raw_risk(i):
     s = 0.0
@@ -178,6 +195,7 @@ import csv
 cols = ['patient_id', 'sex', 'age', 'night_bed_exits', 'night_activity_duration_min',
         'past_falls', 'mobility_score', 'high_risk_medication', 'cognitive_impairment',
         'polypharmacy_count', 'orthostatic_hypotension', 'tug_seconds',
+        'days_since_last_fall', 'syncopal_fall', 'fall_cluster_30d',
         'fall_risk_score', 'fall_risk_level']
 
 with open(os.path.join(_DATA_DIR, 'fall_risk_patients_2000_v2.csv'), 'w', newline='', encoding='utf-8-sig') as f:
@@ -187,6 +205,7 @@ with open(os.path.join(_DATA_DIR, 'fall_risk_patients_2000_v2.csv'), 'w', newlin
         w.writerow([
             f'P2026{i:05d}', sex[i], ages[i], nb[i], nd[i],
             pf[i], mob[i], hr_med[i], cog[i], poly[i], ortho[i], tug[i],
+            dslf[i], syncopal[i], cluster[i],
             round(scores[i], 3), levels[i]
         ])
 

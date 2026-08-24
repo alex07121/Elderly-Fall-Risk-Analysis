@@ -14,7 +14,10 @@ const patientData = ref({
   cognitive_impairment: 0,
   polypharmacy_count: 0,
   orthostatic_hypotension: 0,
-  tug_seconds: 12.0
+  tug_seconds: 12.0,
+  days_since_last_fall: null,
+  syncopal_fall: 0,
+  fall_cluster_30d: 0
 })
 
 const predictionResult = ref(null)
@@ -114,6 +117,18 @@ const submitAssessment = async () => {
       <div>
         <label class="block text-sm font-medium">Orthostatic Hypotension (0 or 1)</label>
         <input v-model.number="patientData.orthostatic_hypotension" type="number" min="0" max="1" class="border p-2 w-full rounded" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium">Days Since Last Fall (empty if none)</label>
+        <input v-model.number="patientData.days_since_last_fall" type="number" min="0" class="border p-2 w-full rounded" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium">Syncopal Fall - loss of consciousness (0 or 1)</label>
+        <input v-model.number="patientData.syncopal_fall" type="number" min="0" max="1" class="border p-2 w-full rounded" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium">Acute Fall Cluster - 2+ in 30 days (0 or 1)</label>
+        <input v-model.number="patientData.fall_cluster_30d" type="number" min="0" max="1" class="border p-2 w-full rounded" />
       </div>
 
       <div class="col-span-2 mt-4">

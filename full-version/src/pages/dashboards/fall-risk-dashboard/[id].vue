@@ -62,6 +62,9 @@ const features = computed(() => {
     { label: 'Polypharmacy count', value: r.polypharmacy_count },
     { label: 'Orthostatic hypotension', value: r.orthostatic_hypotension ? 'Yes' : 'No' },
     { label: 'TUG test (seconds)', value: r.tug_seconds },
+    { label: 'Days since last fall', value: r.days_since_last_fall ?? '—' },
+    { label: 'Syncopal fall (loss of consciousness)', value: r.syncopal_fall ? 'Yes' : 'No' },
+    { label: 'Acute fall cluster (2+ in 30 days)', value: r.fall_cluster_30d ? 'Yes' : 'No' },
   ]
 })
 
