@@ -68,8 +68,20 @@ const features = computed(() => {
   ]
 })
 
-const interventions = computed(() => record.value?.intervention ?? [])
-const lime = computed(() => record.value?.lime_explanations ?? [])
+const suggestion = computed(() => record.value?.suggestion ?? { band: null, not_suggestion: true, items: [] })
+
+const suggestionGroups = computed(() => {
+  if (suggestion.value.not_suggestion)
+    return []
+  const meta = [
+    { key: 1, title: 'Act now', color: 'error' },
+    { key: 2, title: 'This week', color: 'warning' },
+    { key: 3, title: 'Routine', color: 'info' },
+  ]
+  return meta
+    .map(g => ({ ...g, items: suggestion.value.items.filter(it => it.priority === g.key) }))
+    .filter(g => g.items.length)
+})
 
 function formatDate(iso: string) {
   if (!iso)
@@ -169,8 +181,8 @@ async function handleDownloadPdf() {
       icon="tabler-alert-triangle"
       title="HIGH FALL RISK"
     >
-      This resident is at high risk of falling. Please review the recommended interventions below
-      and apply them as soon as possible.
+      This resident is at high risk of falling. Please review the explanation below and call the care team
+      to take action as soon as possible.
     </VAlert>
 
     <VRow>
@@ -182,7 +194,7 @@ async function handleDownloadPdf() {
         <VCard>
           <VCardItem>
             <VCardTitle>Resident Profile</VCardTitle>
-            <VCardSubtitle>11 features used by the model</VCardSubtitle>
+            <VCardSubtitle>14 features used by the model</VCardSubtitle>
           </VCardItem>
 
           <VDivider />
@@ -209,12 +221,11 @@ async function handleDownloadPdf() {
         </VCard>
       </VCol>
 
-      <!-- Right: Interventions + LIME -->
+      <!-- Right: Suggestion (60-74 age band, evidence-based) -->
       <VCol
         cols="12"
         md="7"
       >
-        <!-- Interventions (key for family / supervisor) -->
         <VCard :class="record.fall_risk_level === 'HIGH' ? 'border-error' : ''">
           <VCardItem>
             <VCardTitle>
@@ -222,90 +233,48 @@ async function handleDownloadPdf() {
                 icon="tabler-first-aid-kit"
                 class="me-2"
               />
-              suggestion
+              Suggestion
             </VCardTitle>
-            <VCardSubtitle v-if="!interventions.length">
-              No specific intervention needed for this resident.
-            </VCardSubtitle>
-            <VCardSubtitle v-else>
-              Actionable steps to reduce fall risk — share with care team and family.
+            <VCardSubtitle v-if="suggestion.band">
+              Age band {{ suggestion.band }} · evidence-based care steps
             </VCardSubtitle>
           </VCardItem>
 
-          <VDivider v-if="interventions.length" />
+          <VCardText v-if="suggestion.not_suggestion">
+            <span class="text-body-2 text-medium-emphasis">Not suggestion</span>
+          </VCardText>
 
-          <VCardText v-if="interventions.length">
-            <div
-              v-for="(it, idx) in interventions"
-              :key="it.feature"
-              class="intervention-row mb-3"
+          <template v-else>
+            <VDivider />
+
+            <VCardText v-if="!suggestionGroups.length">
+              <span class="text-body-2 text-medium-emphasis">No targeted intervention needed at this time - routine fall prevention continues (non-slip slippers, night light, call bell within reach)</span>
+            </VCardText>
+
+            <template
+              v-for="g in suggestionGroups"
+              :key="g.key"
             >
-              <div class="d-flex align-center gap-2 mb-1">
-                <VAvatar
-                  :color="riskColor"
-                  size="28"
-                  variant="tonal"
+              <VCardText>
+                <div class="d-flex align-center gap-2 mb-2">
+                  <span
+                    class="priority-dot"
+                    :style="{ background: `rgb(var(--v-theme-${g.color}))` }"
+                  />
+                  <span class="text-subtitle-2 font-weight-medium">{{ g.title }}</span>
+                </div>
+
+                <div
+                  v-for="(it, idx) in g.items"
+                  :key="it.feature"
+                  class="d-flex align-start gap-2 mb-1"
                 >
-                  <span class="text-caption font-weight-bold">{{ idx + 1 }}</span>
-                </VAvatar>
-                <span class="text-subtitle-2 font-weight-medium">{{ it.label }}</span>
-              </div>
-              <div class="text-body-2 ms-10">
-                {{ it.action }}
-              </div>
-            </div>
-          </VCardText>
-        </VCard>
-
-        <!-- LIME explanation -->
-        <VCard class="mt-4">
-          <VCardItem>
-            <VCardTitle>
-              <VIcon
-                icon="tabler-brain"
-                class="me-2"
-              />
-              Why this risk level
-            </VCardTitle>
-            <VCardSubtitle>Model explanation (top risk factors)</VCardSubtitle>
-          </VCardItem>
-
-          <VDivider />
-
-          <VCardText v-if="lime.length">
-            <div
-              v-for="(e, i) in lime"
-              :key="i"
-              class="mb-3"
-            >
-              <div class="d-flex align-center gap-2">
-                <VChip
-                  v-if="e.direction?.includes('HIGH')"
-                  size="small"
-                  color="error"
-                  variant="tonal"
-                >
-                  {{ e.direction }}
-                </VChip>
-                <VChip
-                  v-else
-                  size="small"
-                  color="success"
-                  variant="tonal"
-                >
-                  {{ e.direction }}
-                </VChip>
-                <span class="text-body-2">{{ e.condition }}</span>
-              </div>
-              <div class="text-caption text-medium-emphasis ms-1 mt-1">
-                weight: {{ e.weight }}
-              </div>
-            </div>
-          </VCardText>
-
-          <VCardText v-else>
-            <span class="text-body-2 text-medium-emphasis">No explanation available.</span>
-          </VCardText>
+                  <span class="text-caption font-weight-bold mt-1">{{ idx + 1 }}.</span>
+                  <span class="text-body-2">{{ it.action }}</span>
+                </div>
+              </VCardText>
+            </template>
+          </template>
         </VCard>
       </VCol>
     </VRow>
@@ -316,7 +285,10 @@ async function handleDownloadPdf() {
 .border-error {
   border: 1px solid rgb(var(--v-theme-error));
 }
-.intervention-row:last-child {
-  margin-bottom: 0 !important;
+.priority-dot {
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  flex: 0 0 10px;
 }
 </style>

@@ -145,7 +145,7 @@ for i in range(N):
     else:
         pf.append(random.choices([2, 3, 4, 5], weights=[0.62, 0.24, 0.10, 0.04], k=1)[0])
 
-# ---------- 10.5 扩展跌倒细节字段（不进模型，仅干预建议用） ----------
+# ---------- 10.5 扩展跌倒细节字段（不进模型，仅作临床背景与展示用） ----------
 # days_since_last_fall: past_falls=0 时留空；否则近期偏态分布(中位数约 31 天)
 # syncopal_fall: 仅 past_falls>=1 时约 25% 为 1（晕厥性跌倒）
 # fall_cluster_30d: 仅 past_falls>=2 时约 25% 为 1（30 天内连续跌倒）

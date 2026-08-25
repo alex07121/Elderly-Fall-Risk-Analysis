@@ -20,7 +20,7 @@ class PatientRecord(Base):
     polypharmacy_count = Column(Integer, nullable=False)
     orthostatic_hypotension = Column(Integer, nullable=False)
     tug_seconds = Column(Float, nullable=False)
-    # Extended fall-detail fields (NOT model inputs; used only for intervention routing)
+    # Extended fall-detail fields (NOT model inputs; kept for clinical context & dashboard display)
     days_since_last_fall = Column(Integer, nullable=True)   # days since most recent fall (empty if no fall)
     syncopal_fall = Column(Integer, nullable=True, default=0)       # 1 = fall with loss of consciousness
     fall_cluster_30d = Column(Integer, nullable=True, default=0)    # 1 = >=2 falls within 30 days
@@ -28,5 +28,4 @@ class PatientRecord(Base):
     fall_risk_level = Column(String, nullable=False)
     resident_id = Column(String, nullable=True, index=True)  # resident identifier (for trend tracking)
     lime_explanations = Column(Text, nullable=True)          # LIME explanation (JSON string)
-    intervention = Column(Text, nullable=True)               # care intervention advice
     created_at = Column(DateTime, default=datetime.utcnow)

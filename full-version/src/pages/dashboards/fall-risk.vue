@@ -152,10 +152,9 @@ const submitAssessment = async () => {
       </ul>
     </div>
 	
-	<!-- Results Panel -->
-    <div v-if="predictionResult" class="bg-gray-50 p-6 rounded border shadow-inner space-y-4">
-      <h3 class="text-lg font-semibold">Suggestions: </h3>
-      
-    </div>
+	<!-- Suggestions Panel -->
+  <div v-if="predictionResult" class="bg-gray-50 p-6 rounded border shadow-inner space-y-4">
+    <h3 class="text-lg font-semibold">No. Suggestion</h3>
+  </div>
   </div>
 </template>

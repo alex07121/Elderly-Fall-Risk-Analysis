@@ -1,17 +1,17 @@
 [
   {
-    "feature": "tug_seconds",
-    "meaning": "TUG test time (seconds)",
-    "lime_weight": 0.3637
+    "feature": "high_risk_medication",
+    "meaning": "Uses high-risk medication (0/1)",
+    "weight": 1.6732
   },
   {
     "feature": "past_falls",
     "meaning": "Number of past falls",
-    "lime_weight": 0.1366
+    "weight": 1.5895
   },
   {
-    "feature": "high_risk_medication",
-    "meaning": "Uses high-risk medication (0/1)",
-    "lime_weight": 0.1185
+    "feature": "orthostatic_hypotension",
+    "meaning": "Dizzy when standing (0/1)",
+    "weight": 1.2648
   }
 ]

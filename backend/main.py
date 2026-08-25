@@ -18,7 +18,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import jwt
 from pydantic import BaseModel, Field
 # This imports code and loads the models automatically
-from ml.predict import predict_fall_risk, explain_patient, recommend_intervention
+from ml.predict import predict_fall_risk, explain_patient
 import gradio as gr
 import pandas as pd
 import random
@@ -123,350 +123,217 @@ class PatientData(BaseModel):
     polypharmacy_count: int = Field(..., ge=0, le=14)
     orthostatic_hypotension: int = Field(..., ge=0, le=1)
     tug_seconds: float = Field(..., ge=8.0, le=31.9)
-    # Extended fall-detail fields (NOT model inputs; used only for intervention routing)
+    # Extended fall-detail fields (NOT model inputs; kept for clinical context & dashboard display)
     days_since_last_fall: Optional[int] = Field(None, ge=0)
     syncopal_fall: int = Field(0, ge=0, le=1)
     fall_cluster_30d: int = Field(0, ge=0, le=1)
     resident_id: Optional[str] = None  # optional, links repeated assessments of the same resident
 
 
-# Map a risk feature to a plain-language, staff-actionable care instruction.
-# Written for frontline care-home staff: simple English, concrete actions,
-# no medical jargon and no citations (the evidence base lives in the docs).
-INTERVENTION_ACTIONS = {
-    "tug_seconds": (
-        "Slow to get up and walk",
-        "Practice standing up and sitting down from a chair 10 times, twice a day. "
-        "Also practice balancing on one foot while holding a chair. If walking is "
-        "unsteady, ask the nurse about a walking stick."
-    ),
-    "past_falls": (
-        "Fell in the past year",
-        "A resident who has fallen needs a full check soon: blood pressure, eyesight, "
-        "feet and all medicines. Clear clutter, rugs and wires from the floor so they "
-        "cannot trip again."
-    ),
-    "high_risk_medication": (
-        "Takes a medicine that can cause falls",
-        "Ask the doctor if this medicine (sleeping pills, antidepressants, painkillers) "
-        "can be reduced or changed. Do not stop it on your own."
-    ),
-    "polypharmacy_count": (
-        "Takes many medicines",
-        "Arrange a pharmacist or doctor to review all medicines once a year, and stop "
-        "any that are not needed."
-    ),
-    "orthostatic_hypotension": (
-        "Feels dizzy when standing up",
-        "When getting up from bed or a chair, do it slowly: sit for 30 seconds first, "
-        "then stand for 30 seconds, then walk. Give plenty of water. Ask the doctor "
-        "about blood pressure medicines."
-    ),
-    "night_bed_exits": (
-        "Gets out of bed often at night",
-        "Stop drinks 2 hours before bedtime. Put a portable toilet (commode) next to "
-        "the bed. Keep a night light on and clear the path. Use non-slip slippers."
-    ),
-    "cognitive_impairment": (
-        "Memory problems",
-        "Keep to a simple daily routine. Remove clutter and keep the home well lit, "
-        "because the resident may not notice dangers. Do simple exercises together daily."
-    ),
-    "mobility_score": (
-        "Weak legs",
-        "Help the resident do leg exercises every day: lift knees, stand up from a "
-        "chair 10 times, and hold onto a chair while lifting one foot. 30 minutes, "
-        "3 times a week."
-    ),
-    "age": (
-        "Older age",
-        "Keep the resident active and moving every day. Encourage daily walks with "
-        "supervision, and check for new hazards at home."
-    ),
-    "night_activity_duration_min": (
-        "Awake and moving a lot at night",
-        "Check if the resident is in pain or needs the toilet at night. Keep the "
-        "bedroom quiet and cool. Tell the nurse if they wake often, so sleep can be checked."
-    ),
-}
+# ---------- 60-74 岁带跌倒风险建议（特征驱动，科学依据见各条注释） ----------
+# 优先级: 1 = 立即處理, 2 = 本週做, 3 = 例行
+# 依据: TUG (Podsiadlo & Richardson 1991) / Morse Fall Scale / Beers 2023 /
+#       STOPPFall / CDC STEADI / Otago Exercise Programme / MMSE
 
-# Age-band-aware version for 60-70 year olds: same plain language, but with more
-# sensitive thresholds and an "early prevention" tone (per the age-banded doc, Section 4).
-INTERVENTION_ACTIONS_60_70 = {
-    "tug_seconds": (
-        "Walks slower than expected for age 60-70",
-        "Start balance and leg training NOW, 3 times a week for 30 minutes: stand up "
-        "and sit down, walk heel-to-toe, balance on one foot holding a chair. Even "
-        "slightly slow walking at this age should be treated early."
-    ),
-    "past_falls": (
-        "Fell at least once this year (age 60-70)",
-        "Book a full check within this week: blood pressure standing up, eyesight, "
-        "feet and all medicines. At age 60-70 a fall is an early warning - fix the "
-        "cause now before more falls."
-    ),
-    "high_risk_medication": (
-        "Takes a fall-risk medicine",
-        "Ask the doctor to review this medicine (sleeping pills, antidepressants, "
-        "antipsychotics, painkillers). Reducing or changing it can cut falls a lot. "
-        "Never stop it without the doctor."
-    ),
-    "polypharmacy_count": (
-        "Takes 5 or more medicines",
-        "Book a pharmacist review of all medicines once a year. Ask to stop medicines "
-        "that are not needed, and avoid too many at once."
-    ),
-    "orthostatic_hypotension": (
-        "Dizzy or light-headed when standing",
-        "Teach the 3-step rise: lie still 30 seconds, sit 30 seconds, stand 30 seconds, "
-        "then walk. Give 6-8 glasses of water a day. Ask the doctor to check blood "
-        "pressure medicines."
-    ),
-    "night_bed_exits": (
-        "Gets up to toilet 3+ times a night",
-        "No drinks 2 hours before bed. Put a commode next to the bed. Night light on. "
-        "Non-slip slippers. Ask the doctor about prostate (men) or bladder (women) problems."
-    ),
-    "cognitive_impairment": (
-        "Mild memory problems",
-        "Do simple exercises with the resident daily (walking, standing up, reaching). "
-        "Keep routine simple and familiar. Ask the doctor for a memory test to find "
-        "the cause."
-    ),
-    "mobility_score": (
-        "Weak legs / poor balance",
-        "Start a daily leg and balance routine: stand up from a chair 10 times, "
-        "heel-to-toe walk, one-foot balance holding a chair. 30 minutes, 3+ times a "
-        "week. Ask a physiotherapist for help if very weak."
-    ),
-    "age": (
-        "Age 60-70 (early prevention window)",
-        "This is the best age to prevent falls. Keep exercise going 3+ times a week, "
-        "and do a yearly check of medicines, eyesight and home safety."
-    ),
-    "night_activity_duration_min": (
-        "Awake long periods at night",
-        "Check for pain or loud snoring (possible sleep problem). Keep the night "
-        "routine calm. If the resident cannot sleep, tell the nurse - try other ways "
-        "before sleeping pills."
-    ),
+SUGGESTION_PRIORITIES = {
+    1: "Act now",
+    2: "This week",
+    3: "Routine",
 }
 
 
-def _suggest_60_70(feature: str, value):
-    """Value-band stratified staff instruction for a 60-70 year old.
+def _suggest_60_74(features: dict) -> list:
+    """60-74 岁带动态建议：数值嵌入 + 组合推导 + 一句话精简。
 
-    Returns (status_label, action) based on the feature's actual value.
-    Bands follow docs/Feature_Value_Stratified_Interventions.docx (thresholds:
-    TUG 8.5/12/13.5/20 s; polypharmacy 5/8/11; nocturia 2/3-4/5+; etc.).
-    Returns (None, None) if the feature is not stratified at this band.
+    三层：_describe 逐特征生成含数值的 label/action → _apply_combos 组合吸收 →
+    _finalize 过滤排序限 6 条。对外只保留 {feature, label, action, priority}。
     """
-    if value is None or isinstance(value, str):
-        return None, None
-    v = value
+    def num(v):
+        """数值显示规范化：55.0 → 55，11.2 → 11.2。"""
+        try:
+            f = float(v)
+            return int(f) if f == int(f) else f
+        except (TypeError, ValueError):
+            return v
 
-    if feature == "tug_seconds":
-        if v < 8.5:
-            return "Normal", "Keep active; no action needed yet."
-        if v < 12.0:
-            return ("Mildly slow (60-70 sensitive)",
-                    "Start balance and leg training NOW, 3 times a week for 30 minutes: "
-                    "stand up and sit down 10 times, walk heel-to-toe, balance on one foot "
-                    "holding a chair.")
-        if v < 13.5:
-            return ("Approaching high risk",
-                    "Keep the training going and ask the physiotherapist to check the walking pattern.")
-        if v < 20.0:
-            return ("High fall risk",
-                    "Ask the physiotherapist to start a falls-prevention plan and check whether "
-                    "a walking stick is needed.")
-        return ("Severe",
-                "Ask the occupational therapist to check transfers and the bedroom/bathroom route.")
+    items = []
 
-    if feature == "mobility_score":
-        if v >= 8:
-            return "Independent", "Maintain exercise; keep the annual review."
-        if v >= 5:
-            return ("Reduced mobility",
-                    "Help the resident do leg and balance exercises 3 times a week for 30 minutes: "
-                    "stand up from a chair 10 times, heel-to-toe walk, one-foot balance. Ask the "
-                    "physiotherapist if there is no improvement after 6 weeks.")
-        return ("Severely reduced mobility",
-                "Ask the physiotherapist to assess the resident and consider a walking aid.")
-
-    if feature == "past_falls":
-        if v < 1:
-            return "No fall", "No special action; keep the yearly check."
-        if v < 2:
-            return ("Fell once this year",
-                    "Book a full check this week: blood pressure standing up, eyesight, feet, "
-                    "and all medicines.")
-        return ("Fell 2 or more times",
-                "Same full check as above, plus ask the doctor for a falls clinic or "
-                "geriatrician referral.")
-
-    if feature == "polypharmacy_count":
-        if v < 5:
-            return "Low", "Keep the yearly medication review."
-        if v < 8:
-            return ("Takes 5-7 medicines",
-                    "Book a pharmacist review of all medicines once a year; ask to stop any "
-                    "that are not needed.")
-        if v < 11:
-            return ("Takes 8-10 medicines",
-                    "Ask the pharmacist to review all medicines every 6 months.")
-        return ("Takes 11+ medicines",
-                "Ask the pharmacist to review all medicines every 3 months and simplify the "
-                "list as much as possible.")
-
-    if feature == "night_bed_exits":
-        if v < 2:
-            return "Normal", "No special action."
-        if v < 3:
-            return ("Gets up once or twice at night",
-                    "No drinks 2 hours before bedtime and avoid evening coffee or tea.")
-        if v < 5:
-            return ("Gets up 3-4 times at night",
-                    "Put a commode next to the bed, keep a night light on, clear the floor path, "
-                    "and use non-slip slippers.")
-        return ("Gets up 5+ times at night",
-                "Same as above, plus ask the doctor about prostate (men) or bladder (women) "
-                "problems, and tell the night nurse to do regular checks.")
-
-    if feature == "night_activity_duration_min":
-        if v <= 30:
-            return "Normal", "No special action."
-        if v <= 60:
-            return ("Awake 30-60 min at night",
-                    "Check for pain or needing the toilet at night. Keep the bedroom quiet and "
-                    "cool. Tell the nurse if this happens most nights.")
-        return ("Awake over 1 hour at night",
-                "Ask the nurse to check for a sleep problem (e.g. loud snoring). Try a calm night "
-                "routine before using sleeping pills.")
-
-    if feature == "cognitive_impairment":
-        if v < 1:
-            return "None", "No special action."
-        if v < 2:
-            return ("Mild memory problems",
-                    "Do simple exercises with the resident daily (walking, standing up, reaching). "
-                    "Keep the routine simple and familiar. Ask the doctor for a memory test.")
-        return ("Moderate to severe memory problems",
-                "Keep the resident in a supervised daily routine, remove clutter and keep the home "
-                "well lit, and ask the doctor to review all medicines.")
-
-    if feature == "orthostatic_hypotension":
-        if v < 1:
-            return "None", "No special action."
-        return ("Dizzy when standing up",
-                "Teach the 3-step rise: lie still 30 seconds, sit 30 seconds, stand 30 seconds, "
-                "then walk. Give 6-8 glasses of water a day. Ask the doctor to check blood "
-                "pressure medicines.")
-
-    if feature == "high_risk_medication":
-        if v < 1:
-            return "None", "Keep the yearly medicine review."
-        return ("Takes a fall-risk medicine",
-                "Ask the doctor to review this medicine (sleeping pills, antidepressants, "
-                "painkillers). Reducing or changing it can cut falls a lot. Never stop it "
-                "without the doctor.")
-
-    if feature == "age":
-        if v < 71:
-            return ("Age 60-70 (early prevention window)",
-                    "This is the best age to prevent falls. Keep exercise going 3+ times a week, "
-                    "and do a yearly check of medicines, eyesight and home safety.")
-        return None, None  # 71+ handled by the generic map
-
-    if feature == "days_since_last_fall":
-        if v is None or v >= 365:
-            return "No recent fall", "Keep the yearly check."
-        if v < 30:
-            return ("Fell very recently (within a month)",
-                    "Book the full fall check THIS WEEK (blood pressure, eyesight, feet, medicines).")
-        return ("Fell in the last 1-6 months",
-                "Book the full fall check within a month.")
-
-    if feature == "sex":
-        if str(value).upper().startswith("F"):
-            return ("Female", "Check for needing the toilet often at night; ask about a bedside "
-                    "commode. Ask the doctor about a bone check (DXA).")
-        return ("Male", "Check alcohol use and ask the doctor to check blood pressure when "
-                "standing up, especially if on blood pressure tablets.")
-
-    return None, None
-
-
-# Known model-input feature names (for extracting the feature from a LIME condition).
-KNOWN_FEATURES = {
-    "sex", "age", "night_bed_exits", "night_activity_duration_min", "past_falls",
-    "mobility_score", "high_risk_medication", "cognitive_impairment",
-    "polypharmacy_count", "orthostatic_hypotension", "tug_seconds",
-}
-
-
-def _extract_feature(condition) -> str | None:
-    """Extract the feature name from a LIME condition.
-
-    LIME can produce either 'tug_seconds > 15.60' or '14.70 < tug_seconds <= 18.20'.
-    The simple split()[0] approach fails on the second format, so scan all tokens.
-    """
-    for tok in str(condition).replace(">=", " ").replace("<=", " ").replace(">", " ").replace("<", " ").split():
-        if tok in KNOWN_FEATURES:
-            return tok
-    return None
-
-
-def build_interventions(features_dict: dict, lime_explanations: list) -> list:
-    """Translate LIME top risk factors into staff-actionable care interventions.
-
-    Returns a list of {feature, label, action}. Acute/syncopal fall flags are
-    prepended (routed to medical workup) ahead of the LIME-derived advice.
-    """
-    actions = []
-    seen = set()
-
-    # Prepend acute/syncopal routing (these flags are NOT model inputs).
-    if features_dict.get("syncopal_fall") == 1:
-        actions.append({
-            "feature": "syncopal_fall",
-            "label": "Fell and lost consciousness",
-            "action": ("This is serious - tell the doctor and arrange a heart check soon. "
-                       "The fall may be caused by the heart or blood pressure, not by weak legs."),
+    def add(feature, label, action, priority, topic):
+        items.append({
+            "feature": feature, "label": label, "action": action,
+            "priority": priority, "topic": topic, "consumed": False,
+            "value": num(features.get(feature)),
         })
-        seen.add("syncopal_fall")
 
-    if features_dict.get("fall_cluster_30d") == 1:
-        actions.append({
-            "feature": "fall_cluster_30d",
-            "label": "Fell 2 or more times in the last month",
-            "action": ("Find out what changed: a new medicine, fever, low blood sugar, or dizziness. "
-                       "If the cause is not clear within 2 days, take the resident to the doctor or emergency."),
+    past_falls = num(features.get("past_falls", 0) or 0)
+    tug = num(features.get("tug_seconds"))
+    mobility = num(features.get("mobility_score"))
+    cognitive = features.get("cognitive_impairment")
+    night_act = num(features.get("night_activity_duration_min"))
+    bed_exits = num(features.get("night_bed_exits"))
+    dslf = num(features.get("days_since_last_fall"))
+    polypharmacy = num(features.get("polypharmacy_count"))
+    sex = features.get("sex")
+    is_male = isinstance(sex, str) and sex.upper().startswith("M")
+
+    # ---------- Layer 1: _describe（含数值的动态判讀 + 直白可落地的英文护理动作） ----------
+    if features.get("syncopal_fall") == 1:
+        add("syncopal_fall", "Syncopal fall",
+            "Syncopal fall: report to the nursing station immediately; assist every sit-to-stand and transfer; ask the doctor to arrange an ECG and cardiac evaluation - the fall may be due to heart or blood pressure problems", 1, "heart")
+    if features.get("fall_cluster_30d") == 1:
+        add("fall_cluster_30d", "2+ falls in 30 days",
+            "2+ falls in 30 days: record the time and circumstances of each fall and report to the nursing station; look for new triggers (new medication, fever, dehydration); if the cause is unclear within 2 days, arrange clinic/ER referral", 1, "fall_workup")
+    if past_falls >= 2:
+        add("past_falls", f"{past_falls} falls this year",
+            "Complete a full check this week: standing blood pressure, vision, feet, and all medications; because of 2 falls this year, also ask the doctor to refer to a falls clinic/geriatric assessment", 1, "fall_workup")
+    if isinstance(tug, (int, float)):
+        if 8 <= tug < 12:
+            add("tug_seconds", f"TUG {tug}s (sensitive band)",
+                "Start strength and balance training now: 3x/week, 30 min - sit-to-stand x10, heel-to-toe walking, single-leg stand holding a chair", 1, "training")
+        elif 12 <= tug < 13.5:
+            add("tug_seconds", f"TUG {tug}s (approaching high risk)",
+                "Continue strength and balance training 3x/week; also ask a physiotherapist to assess the gait", 1, "training")
+        elif 13.5 <= tug < 20:
+            add("tug_seconds", f"TUG {tug}s (high risk)",
+                "Stop routine training; ask a physiotherapist to start a fall-prevention plan and assess whether a walking aid is needed", 1, "training")
+        elif tug >= 20:
+            add("tug_seconds", f"TUG {tug}s (severe)",
+                "Use 2-person assist or a transfer aid for all transfers; ask an occupational therapist to assess bed-side and bathroom transfer routes", 1, "training")
+    if isinstance(mobility, (int, float)) and 1 <= mobility <= 4:
+        add("mobility_score", f"Mobility {mobility}/10 (impaired)",
+            "Assist with leg/balance training 3x/week; if no improvement in 6 weeks, refer to a physiotherapist; consider an assistive device if walking is unsteady", 1, "training")
+    if features.get("high_risk_medication") == 1:
+        add("high_risk_medication", "Fall-risk medication",
+            "List all medications and give to the nurse: ask the doctor to review fall-risk drugs (sleeping pills, antidepressants, painkillers); never stop them on your own", 1, "med")
+    if features.get("orthostatic_hypotension") == 1:
+        add("orthostatic_hypotension", "Dizzy on standing (orthostatic hypotension)",
+            "Teach the 3-step rise: lie 30s - sit 30s - stand 30s before walking; 6-8 glasses of water a day; ask the doctor to review blood pressure medication", 1, "bp")
+    if past_falls >= 1 and isinstance(dslf, (int, float)) and 0 <= dslf < 30:
+        add("days_since_last_fall", f"Fell {dslf} days ago (recent)",
+            "Fell within the last 30 days: place a 'recent fall' sign at the bedside; accompany all bed exits; observe every hour for 24 hours after the fall to prevent a second fall", 1, "fall_workup")
+
+    if past_falls == 1:
+        add("past_falls", "1 fall this year",
+            "1 fall this year: complete a full check within 2 weeks - standing blood pressure, vision, feet, and all medications", 2, "fall_workup")
+    if cognitive == 1:
+        add("cognitive_impairment", "Mild cognitive impairment",
+            "Mild cognitive impairment: at a fixed time daily, do simple activities with the resident (10-min walk, 5 sit-to-stands); if more confused or drowsy than usual, report to the nursing station immediately", 2, "supervision")
+    elif cognitive == 2:
+        add("cognitive_impairment", "Moderate-to-severe cognitive impairment",
+            "Moderate-to-severe cognitive impairment: one-to-one supervision for daily activities; keep corridors well-lit and clutter-free; record and report nighttime wandering or agitation", 2, "supervision")
+    if isinstance(polypharmacy, (int, float)) and polypharmacy >= 5:
+        add("polypharmacy_count", f"{polypharmacy} medications",
+            "5+ medications: list all medications and give to the nurse; arrange a full medication review by a pharmacist", 2, "med")
+    if isinstance(night_act, (int, float)) and night_act > 30:
+        add("night_activity_duration_min", f"Awake {night_act} min at night",
+            "Awake more than 30 min at night: record wake times and duration; check for pain, temperature discomfort, or loud snoring (possible sleep problem); no fluids 2h before bed; if frequently awake, report to the nursing station", 2, "sleep")
+
+    if isinstance(bed_exits, (int, float)) and bed_exits >= 2:
+        if bed_exits == 2:
+            add("night_bed_exits", "2 bed exits per night",
+                "2 bed exits per night: no fluids 2h before bed; keep a night light on; place non-slip slippers by the bed and put them on before getting up", 3, "night_safety")
+        else:
+            organ = "prostate (male)" if is_male else "bladder (female)"
+            add("night_bed_exits", f"{bed_exits} bed exits per night (frequent)",
+                f"3+ bed exits per night: place a commode by the bed to shorten nighttime walking; keep a night light on; clear clutter from the bedside; record the nightly exit count; ask the doctor to check {organ} issues", 3, "night_safety")
+
+    # ---------- Layer 2: _apply_combos（组合吸收，被吸收条打 consumed） ----------
+    def find(cond):
+        for it in items:
+            if not it["consumed"] and cond(it):
+                return it
+        return None
+
+    def combo(feature, label, action, priority, topic):
+        items.append({
+            "feature": feature, "label": label, "action": action,
+            "priority": priority, "topic": topic, "consumed": False, "value": None,
         })
-        seen.add("fall_cluster_30d")
 
-    # 60-70 year olds: value-band stratified suggestions (sensitive thresholds).
-    # 71+: falls back to the generic plain-language map (71-80/81-100 bands to be added).
-    age = features_dict.get("age", 71)
-    is_60_70 = isinstance(age, (int, float)) and age <= 70
+    # 1) 起身暈 + 步態/行動力問題 → 一条 P1：先處理血壓再訓練
+    bp = find(lambda it: it["feature"] == "orthostatic_hypotension")
+    train_signals = [it for it in items if not it["consumed"] and it["feature"] in ("tug_seconds", "mobility_score")]
+    if bp and train_signals:
+        bp["consumed"] = True
+        main = train_signals[0]
+        main["consumed"] = True
+        for t in train_signals[1:]:
+            t["consumed"] = True
+        combo("orthostatic+tug", "Dizziness + gait/mobility problems",
+              "Dizzy on standing with slow gait: teach the 3-step rise (lie 30s - sit 30s - stand 30s) and check standing blood pressure daily; start balance training 3x/week only after blood pressure is stable", 1, "training")
 
-    for exp in lime_explanations:
-        # LIME condition may be "tug_seconds > 15.60" or "14.70 < tug_seconds <= 18.20"
-        feat = _extract_feature(exp.get("condition", ""))
-        if feat is None or feat in seen:
-            continue
-        seen.add(feat)
+    # 2) 跌倒≥2 + 暈厥 → 一条 P1：心臟科
+    pf = find(lambda it: it["feature"] == "past_falls" and it["priority"] == 1)
+    sync = find(lambda it: it["feature"] == "syncopal_fall")
+    if pf and sync:
+        pf["consumed"] = True
+        sync["consumed"] = True
+        combo("past_falls+syncopal", "Fall history + syncope",
+              "2 falls this year plus a syncopal fall: report to the nursing station immediately; ask the doctor to prioritize cardiac evaluation (ECG, blood pressure)", 1, "heart")
 
-        if is_60_70:
-            status, action = _suggest_60_70(feat, features_dict.get(feat))
-            if action:
-                actions.append({"feature": feat, "label": status, "action": action})
-            continue
+    # 3) 認知障礙 + 夜間清醒>30 → 一条 P2：夜間專人巡視
+    cog = find(lambda it: it["feature"] == "cognitive_impairment")
+    na = find(lambda it: it["feature"] == "night_activity_duration_min")
+    if cog and na:
+        cog["consumed"] = True
+        na["consumed"] = True
+        combo("cognitive+night_activity", "Cognitive impairment + nighttime wakefulness",
+              "Cognitive impairment with nighttime wakefulness: check on the resident every 2 hours at night, record wakefulness and activity; report unusual behavior immediately", 2, "supervision")
 
-        if feat in INTERVENTION_ACTIONS:
-            label, action = INTERVENTION_ACTIONS[feat]
-            actions.append({"feature": feat, "label": label, "action": action})
-    return actions
+    # 4) TUG + 行動力低 → 合并一条 P1 training（无起身暈时的训练合并）
+    tug_sig = find(lambda it: it["feature"] == "tug_seconds")
+    mob_sig = find(lambda it: it["feature"] == "mobility_score")
+    if tug_sig and mob_sig:
+        tug_sig["consumed"] = True
+        mob_sig["consumed"] = True
+        tv, mv = tug_sig["value"], mob_sig["value"]
+        if tv >= 13.5:
+            action = "High-risk gait with low mobility: stop routine training; ask a physiotherapist to assess and design a training plan; consider an assistive device"
+        else:
+            action = "Slow gait with low mobility: strength and balance training 3x/week, 30 min - sit-to-stand x10, heel-to-toe walking, single-leg stand holding a chair; accompany walking"
+        combo("tug+mobility", f"TUG {tv}s + Mobility {mv}/10", action, 1, "training")
+
+    # 5) 風險藥物 + 起身暈 → 一条 P1：合併審查血壓藥
+    med = find(lambda it: it["feature"] == "high_risk_medication")
+    bp2 = find(lambda it: it["feature"] == "orthostatic_hypotension")
+    if med and bp2:
+        med["consumed"] = True
+        bp2["consumed"] = True
+        combo("medication+orthostatic", "Fall-risk drugs + dizziness",
+              "Taking fall-risk drugs and dizzy on standing: list all medications and give to the nurse; ask the doctor to review blood pressure drugs and fall-risk drugs together", 1, "med")
+
+    # 6) 多重用藥≥5 + 風險藥物 → 一条 P2：藥師審全部藥
+    poly = find(lambda it: it["feature"] == "polypharmacy_count")
+    med2 = find(lambda it: it["feature"] == "high_risk_medication")
+    if poly and med2:
+        poly["consumed"] = True
+        med2["consumed"] = True
+        combo("polypharmacy+medication", "Polypharmacy + fall-risk drugs",
+              "5+ medications including fall-risk drugs: list all medications and give to the nurse; arrange a full pharmacist review", 2, "med")
+
+    # 7) 跌倒史 + 近期(<30 天) → 一条 P1：防二次跌倒
+    pf2 = find(lambda it: it["feature"] == "past_falls")
+    d2 = find(lambda it: it["feature"] == "days_since_last_fall")
+    if pf2 and d2:
+        pf2["consumed"] = True
+        d2["consumed"] = True
+        combo("past_falls+recent", f"{pf2['value']} falls this year, recent fall",
+              f"{pf2['value']} falls this year with a fall within 30 days: place a sign at the bedside, accompany all bed exits, 24-48h special supervision; arrange a full check as soon as possible", 1, "fall_workup")
+
+    # ---------- Layer 3: _finalize（过滤 consumed + 排序 + 限 6 条） ----------
+    out = [{"feature": it["feature"], "label": it["label"],
+            "action": it["action"], "priority": it["priority"]}
+           for it in items if not it["consumed"]]
+    out.sort(key=lambda it: it["priority"])
+    return out[:6]
+
+
+def build_suggestions(features: dict) -> dict:
+    """建议入口：仅 60-74 岁带输出建议；其他年龄输出 Not suggestion。"""
+    age = features.get("age")
+    if not isinstance(age, (int, float)) or not (60 <= age <= 74):
+        return {"band": None, "not_suggestion": True, "items": []}
+    return {"band": "60-74", "not_suggestion": False, "items": _suggest_60_74(features)}
 
 
 app.add_middleware(
@@ -503,8 +370,7 @@ async def get_prediction(data: PatientData, db: AsyncSession = Depends(get_db), 
         # Run model function
         result = predict_fall_risk(features_dict)
         lime_explanations = explain_patient(features_dict, max_features=3)
-        suggestion = recommend_intervention(features_dict)
-        interventions = build_interventions(features_dict, lime_explanations)
+        suggestion = build_suggestions(features_dict)
 
         # Save feature profile & prediction output to database
         db_record = PatientRecord(
@@ -525,7 +391,6 @@ async def get_prediction(data: PatientData, db: AsyncSession = Depends(get_db), 
             fall_risk_level=result,
             resident_id=features_dict.get("resident_id"),
             lime_explanations=json.dumps(lime_explanations),
-            intervention=json.dumps(interventions),
         )
         db.add(db_record)
         await db.commit()
@@ -536,7 +401,6 @@ async def get_prediction(data: PatientData, db: AsyncSession = Depends(get_db), 
             "fall_risk_level": result,
             "lime_explanations": lime_explanations,
             "suggestion": suggestion,
-            "interventions": interventions,
         }
         
     except Exception as e:
@@ -565,7 +429,22 @@ def _record_to_dict(record: PatientRecord) -> dict:
         "fall_risk_level": record.fall_risk_level,
         "resident_id": record.resident_id,
         "lime_explanations": json.loads(record.lime_explanations) if record.lime_explanations else [],
-        "intervention": json.loads(record.intervention) if record.intervention else [],
+        "suggestion": build_suggestions({
+            "sex": record.sex,
+            "age": record.age,
+            "night_bed_exits": record.night_bed_exits,
+            "night_activity_duration_min": record.night_activity_duration_min,
+            "past_falls": record.past_falls,
+            "mobility_score": record.mobility_score,
+            "high_risk_medication": record.high_risk_medication,
+            "cognitive_impairment": record.cognitive_impairment,
+            "polypharmacy_count": record.polypharmacy_count,
+            "orthostatic_hypotension": record.orthostatic_hypotension,
+            "tug_seconds": record.tug_seconds,
+            "days_since_last_fall": record.days_since_last_fall,
+            "syncopal_fall": record.syncopal_fall,
+            "fall_cluster_30d": record.fall_cluster_30d,
+        }),
         "created_at": record.created_at.isoformat() if record.created_at else None,
     }
 
@@ -681,19 +560,6 @@ def generate_assessment_pdf(record: dict) -> bytes:
                 styles["Normal"],
             ))
         body.append(Spacer(1, 0.3 * cm))
-
-    # Interventions (key for family / supervisor)
-    interventions = record.get("intervention") or []
-    body.append(Paragraph("Recommended Care Interventions", styles["Heading2"]))
-    if interventions:
-        for it in interventions:
-            body.append(Paragraph(
-                f"<b>{it.get('label', '')}:</b> {it.get('action', '')}",
-                styles["Normal"],
-            ))
-            body.append(Spacer(1, 0.2 * cm))
-    else:
-        body.append(Paragraph("No specific intervention needed.", styles["Normal"]))
 
     body.append(Spacer(1, 0.6 * cm))
     body.append(Paragraph(
@@ -847,24 +713,12 @@ async def predict_gradio(
         
     risk_level = response["fall_risk_level"]
     explanations = response["lime_explanations"]
-    suggestion = response["suggestion"]
 
     # Format output for the user interface textboxes
     output_text = f"Risk Level: {risk_level}\n"
     output_text += "primary factors:\n"
     for i, exp in enumerate(explanations, start=1):
         output_text += f" {i}. {exp['condition']} | Weight: {exp['weight']} ({exp['direction']})\n"
-    output_text += f"Suggestions:\n"
-    if risk_level == "HIGH":
-        for item in suggestion["all_options"]:
-            if item["can_flip"]:
-                # Perfect Sentence Generation matching your UI requirements
-                output_text += f"  • {item['feature']} need to change from {item['from']} to {item['to']}.\n"
-            else:
-                # Gracefully handle features that cannot drop the risk level independently
-                output_text += f"  • [Restricted] Altering '{item['feature']}' alone is insufficient.\n"
-    else:
-        output_text += f"{suggestion["note"]}\n"
     return output_text
 
 def random_gradio():
@@ -1072,7 +926,6 @@ def batch_predict_file(file):
 
             level = predict_fall_risk(feats)
             expl = explain_patient(feats, max_features=3)
-            interventions = build_interventions(feats, expl)
             to_save.append(PatientRecord(
                 sex=feats.get("sex"),
                 age=feats["age"],
@@ -1091,7 +944,6 @@ def batch_predict_file(file):
                 fall_risk_level=level,
                 resident_id=pid,
                 lime_explanations=json.dumps(expl),
-                intervention=json.dumps(interventions),
             ))
             n_ok += 1
         except Exception:
