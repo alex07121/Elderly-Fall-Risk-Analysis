@@ -70,12 +70,14 @@ def main():
     print(f"Loaded {len(rows)} rows, {X.shape[1]} features, {FEATURES}")
     print("Label distribution:", dict(Counter(y)))
 
-    clf = LogisticRegression(max_iter=2000, random_state=42)
+    # class_weight='balanced' is REQUIRED: without it HIGH recall drops to ~87%
+    # (validated by the team's imbalance experiments - see day22_smote.py)
+    clf = LogisticRegression(max_iter=20000, class_weight="balanced", random_state=42)
     clf.fit(X, y)
 
     # train/test split just to report a sanity metric (model itself is trained on all)
     X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
-    clf_sanity = LogisticRegression(max_iter=2000, random_state=42).fit(X_tr, y_tr)
+    clf_sanity = LogisticRegression(max_iter=20000, class_weight="balanced", random_state=42).fit(X_tr, y_tr)
     pred = clf_sanity.predict(X_te)
     print(f"Sanity hold-out accuracy: {accuracy_score(y_te, pred):.3f}")
     print(classification_report(y_te, pred, digits=3))
