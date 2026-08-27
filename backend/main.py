@@ -18,7 +18,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import jwt
 from pydantic import BaseModel, Field
 # This imports code and loads the models automatically
-from ml.predict import predict_fall_risk, explain_patient
+from ml.newpredict import predict_fall_risk, explain_patient
 import gradio as gr
 import pandas as pd
 import random
