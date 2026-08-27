@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,11 +10,11 @@ from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, recall_score
 
-DATA = "/Users/ks31/Desktop/IA/demo/IA/fall_risk_patients_2000.csv"
+DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv")
 df = pd.read_csv(DATA, encoding="utf-8-sig")
 
 # Preprocessing: drop id/name/leakage columns, convert boolean columns to 0/1
-df = df.drop(columns=['patient_id', 'name', 'fall_risk_score'])
+df = df.drop(columns=[c for c in ['patient_id', 'name', 'fall_risk_score'] if c in df.columns])
 for col in ['high_risk_medication', 'orthostatic_hypotension']:
     df[col] = df[col].map({True: 1, False: 0})
 

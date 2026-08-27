@@ -1,4 +1,5 @@
 # 2000 病人分佈 — LOW/MEDIUM/HIGH 3 色 dot 圖
+import os
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -7,7 +8,7 @@ import matplotlib.pyplot as plt
 plt.rcParams["font.sans-serif"] = ["PingFang HK", "Hiragino Sans GB", "Arial Unicode MS"]
 plt.rcParams["axes.unicode_minus"] = False
 
-df = pd.read_csv("fall_risk_patients_2000.csv")
+df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv"))
 y = df["fall_risk_level"]
 
 ORDER = ["LOW", "MEDIUM", "HIGH"]

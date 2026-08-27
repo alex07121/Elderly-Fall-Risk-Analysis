@@ -1,6 +1,7 @@
 # cd ~/Desktop/IA/demo/IA && unset PYTHONPATH && /opt/anaconda3/bin/python real_data_pipeline_k_fold.py
 # 5-Fold K-Fold Cross-Validation — improved Kero's model (v2)
 # Improvements: +4 interaction features, -polypharmacy, +StandardScaler
+import os
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold, train_test_split
@@ -11,7 +12,7 @@ from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, recall_score, classification_report
 
 # Load data
-df = pd.read_csv("fall_risk_patients_2000.csv")
+df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv"))
 for col in ["high_risk_medication", "orthostatic_hypotension"]:
     df[col] = df[col].map({True: 1, False: 0})
 

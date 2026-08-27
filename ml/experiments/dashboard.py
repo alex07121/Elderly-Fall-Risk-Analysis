@@ -1,6 +1,7 @@
 """
     cd ~/Desktop/IA/demo/IA && unset PYTHONPATH && /opt/anaconda3/bin/python -m streamlit run dashboard.py
 """
+import os
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -14,7 +15,7 @@ from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, recall_score
 
 # ═══ Load data ═══
-df = pd.read_csv("fall_risk_patients_2000.csv")
+df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv"))
 for col in ["high_risk_medication", "orthostatic_hypotension"]:
     df[col] = df[col].map({True: 1, False: 0})
 

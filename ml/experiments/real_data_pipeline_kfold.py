@@ -1,10 +1,11 @@
 # Real Data Pipeline — fall_risk_patients_2000.csv
 # Load with pandas → feature engineering → train with model
 
+import os
 import pandas as pd
 
 #Load real data
-df = pd.read_csv("fall_risk_patients_2000.csv")
+df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv"))
 
 #The 10 required features from the blueprint
 REQUIRED = ["age", "night_bed_exits", "night_activity_duration_min",
