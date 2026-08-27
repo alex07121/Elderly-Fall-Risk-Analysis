@@ -16,7 +16,7 @@ from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_sc
 import joblib, json, os
 
 # ── Load data ──
-df = pd.read_csv("fall_risk_patients_2000_v2.csv")
+df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv"))
 for col in ["high_risk_medication", "orthostatic_hypotension"]:
     df[col] = df[col].map({True: 1, False: 0})
 df["sex"] = df["sex"].map({"F": 0, "M": 1})

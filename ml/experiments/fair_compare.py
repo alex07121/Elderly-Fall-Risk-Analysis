@@ -13,6 +13,7 @@
 #
 # Run:
 #   cd ~/Desktop/IA/demo/IA2 && unset PYTHONPATH && /opt/anaconda3/bin/python fair_compare.py
+import os
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold, train_test_split
@@ -21,7 +22,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score, classification_report
 
 # ── Load data (shared by both) ──
-df = pd.read_csv("fall_risk_patients_2000_v2.csv")
+df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv"))
 for col in ["high_risk_medication", "orthostatic_hypotension"]:
     df[col] = df[col].map({True: 1, False: 0})
 df["sex"] = df["sex"].map({"F": 0, "M": 1})
