@@ -1,19 +1,25 @@
 export default [
   {
-    title: 'Dashboards',
+    title: 'Fall Risk System',
     icon: { icon: 'tabler-smart-home' },
     children: [
       {
-        title: 'Risk Dashboard',
+        title: 'Role Selection',
+        to: 'root',
+        icon: { icon: 'tabler-layout-dashboard' },
+      },
+      {
+        title: 'Personal Risk Assessment',
+        to: 'dashboards-fall-risk',
+        icon: { icon: 'tabler-user-heart' },
+      },
+      {
+        title: 'Care Team Dashboard',
         to: 'dashboards-fall-risk-dashboard',
         icon: { icon: 'tabler-activity-heartbeat' },
       },
-      {
-        title: 'Fall Risk XAI',
-        to: 'dashboards-fall-risk',
-      },
     ],
-    badgeContent: '2',
-    badgeClass: 'bg-error',
+    badgeContent: 'AI',
+    badgeClass: 'bg-primary',
   },
 ]

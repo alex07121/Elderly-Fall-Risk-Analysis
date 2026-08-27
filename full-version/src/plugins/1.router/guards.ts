@@ -9,7 +9,13 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
      * If it's a public route, continue navigation. This kind of pages are allowed to visited by login & non-login users. Basically, without any restrictions.
      * Examples of public routes are, 404, under maintenance, etc.
      */
-    if (to.meta.public)
+    // The fall-risk experience has its own backend token flow and is entered
+    // from the public role selector. Keep all of its views reachable from that
+    // selector without forcing users through the template demo login first.
+    const fallRiskPaths = ['/dashboards/fall-risk', '/dashboards/fall-risk-dashboard']
+    const isFallRiskExperience = fallRiskPaths.some(path => to.path === path || to.path.startsWith(`${path}/`))
+
+    if (to.meta.public || isFallRiskExperience)
       return
 
     /**

@@ -1,6 +1,19 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import axios from 'axios'
+import { useRouter } from 'vue-router'
+
+definePage({
+  meta: {
+    public: true,
+  },
+})
+
+const router = useRouter()
+
+const goToRoleSelection = () => {
+  router.push('/')
+}
 
 // 1. Reactive patient form matching your FastAPI Pydantic schema
 const patientData = ref({
@@ -26,6 +39,96 @@ const interventionResult = ref(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
 const jwtToken = ref('')
+
+const containsCjk = value => /[\u3400-\u9fff]/u.test(String(value ?? ''))
+
+function englishText(value, fallback = '') {
+  const text = String(value ?? '').trim()
+
+  return text && !containsCjk(text) ? text : fallback
+}
+
+const suggestionFeatureLabels = {
+  sex: 'Sex',
+  age: 'Age',
+  night_bed_exits: 'Night-time bed exits',
+  night_activity_duration_min: 'Night-time activity duration',
+  past_falls: 'Falls in the past year',
+  mobility_score: 'Mobility score',
+  high_risk_medication: 'Medicine linked to falls',
+  cognitive_impairment: 'Cognitive impairment',
+  polypharmacy_count: 'Number of medicines',
+  orthostatic_hypotension: 'Postural hypotension',
+  tug_seconds: 'Timed Up & Go (TUG)',
+  days_since_last_fall: 'Time since the last fall',
+  syncopal_fall: 'Fall with loss of consciousness',
+  fall_cluster_30d: 'Two or more falls within 30 days',
+}
+
+// The current /predict response returns suggestion.items and a
+// not_suggestion flag. Keep a legacy all_options fallback so older backend
+// responses still render, rather than leaving the result panel blank.
+const suggestionItems = computed(() => {
+  const result = interventionResult.value
+  if (!result || typeof result !== 'object')
+    return []
+
+  if (Array.isArray(result.items))
+    return result.items
+
+  return Array.isArray(result.all_options) ? result.all_options : []
+})
+
+const notSuggestedAge = computed(() => {
+  const age = Number(patientData.value.age)
+
+  return Number.isFinite(age)
+    && age >= 75
+    && age <= 100
+})
+
+function suggestionLabel(item) {
+  const feature = String(item?.feature ?? '').toLowerCase()
+
+  return englishText(item?.label, suggestionFeatureLabels[feature] || englishText(item?.feature, 'Care action'))
+}
+
+function suggestionAction(item) {
+  const feature = suggestionLabel(item)
+  const fallback = item?.can_flip
+    ? `${feature} needs to change from ${item.from} to ${item.to}.`
+    : `[Restricted] Altering '${feature}' alone is insufficient.`
+
+  return englishText(item?.action, fallback)
+}
+
+function suggestionNote(value) {
+  return englishText(value, 'No specific action matched this assessment. Continue baseline fall-prevention measures and confirm next steps with the nurse or clinician.')
+}
+
+function referenceTitle(reference) {
+  return englishText(reference?.title, 'Evidence reference')
+}
+
+function priorityLabel(value) {
+  return englishText(value, '')
+}
+
+function normalizeExplanations(items) {
+  if (!Array.isArray(items))
+    return []
+
+  return items.map(item => {
+    const feature = String(item?.feature ?? '').toLowerCase()
+    const label = suggestionFeatureLabels[feature] || 'Assessment input'
+
+    return {
+      ...item,
+      condition: englishText(item?.condition, `${label} condition`),
+      direction: englishText(item?.direction, 'Model contribution'),
+    }
+  })
+}
 
 // 2. Authenticate and cache the Bearer token
 const loginUser = async () => {
@@ -58,10 +161,10 @@ const submitAssessment = async () => {
       headers: { Authorization: `Bearer ${jwtToken.value}` }
     })
     predictionResult.value = response.data.fall_risk_level
-    limeExplanations.value = response.data.lime_explanations
-	  interventionResult.value = response.data.suggestion || null
+    limeExplanations.value = normalizeExplanations(response.data.lime_explanations)
+    interventionResult.value = response.data.suggestion || null
   } catch (err) {
-    errorMessage.value = err.response?.data?.detail || 'Prediction request failed.'
+    errorMessage.value = englishText(err.response?.data?.detail, 'Prediction request failed.')
   } finally {
     isLoading.value = false
   }
@@ -86,6 +189,23 @@ const featureLabels = [
   'syncopal_fall',
   'fall_cluster_30d'
 ]
+
+const radarDisplayLabels = {
+  sex: 'SEX',
+  age: 'AGE',
+  night_bed_exits: 'BED EXITS',
+  night_activity_duration_min: 'NIGHT ACTIVITY',
+  past_falls: 'PAST FALLS',
+  mobility_score: 'MOBILITY',
+  high_risk_medication: 'HIGH-RISK MEDS',
+  cognitive_impairment: 'COGNITION',
+  polypharmacy_count: 'MED COUNT',
+  orthostatic_hypotension: 'ORTHOSTATIC',
+  tug_seconds: 'TUG SEC',
+  days_since_last_fall: 'DAYS SINCE FALL',
+  syncopal_fall: 'SYNCOPAL FALL',
+  fall_cluster_30d: '30-DAY CLUSTER',
+}
 
 // Geometric Circular Symmetry Matrix (360° / 11 elements)
 const angles = [
@@ -152,20 +272,23 @@ const radarPointsArray = computed(() => {
 })
 
 const radarLabelsArray = computed(() => {
-  const textRadius = 140 // Slightly wider radius spacing to separate tighter 14-axis labels
+  const textRadius = 116 // Keep labels close to the plot while leaving a small safety margin at the sides
   return featureLabels.map((label, idx) => {
     const x = (textRadius * Math.sin(angles[idx])).toFixed(1)
     const y = (-textRadius * Math.cos(angles[idx])).toFixed(1)
+    const fullName = label.replace(/_/g, ' ').toUpperCase()
+    const name = radarDisplayLabels[label] || fullName
     
     let textAnchor = 'middle'
     if (parseFloat(x) > 15) textAnchor = 'start'
     if (parseFloat(x) < -15) textAnchor = 'end'
 
     return {
-      name: label.replace(/_/g, ' ').toUpperCase(),
+      name,
       x,
       y,
       textAnchor,
+      fullName,
       isActive: idx === featureSelector.value
     }
   })
@@ -183,8 +306,6 @@ const getFeatureDirection = (label) => {
 onMounted(() => {
   console.log("14-Axis Structural Graphing Engine Activated Successfully.")
 })
-
-import { computed, onMounted, onUnmounted } from 'vue'
 
 // Instantiate layout token refs matching the template definitions
 const directionWrapperRef = ref(null)
@@ -263,13 +384,34 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
+  <div class="p-6 space-y-6 fall-risk-assessment">
+    <div class="assessment-toolbar">
+      <div class="assessment-toolbar__identity">
+        <div class="assessment-toolbar__icon" aria-hidden="true">
+          <VIcon icon="tabler-user-heart" size="22" />
+        </div>
+        <div>
+          <div class="assessment-toolbar__eyebrow">FOR INDIVIDUALS · PERSONAL USE</div>
+          <h1>Personal Fall Risk Assessment</h1>
+          <p>Enter your details to receive an AI risk level and actionable guidance</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        class="assessment-toolbar__back"
+        aria-label="Back to role selection"
+        @click="goToRoleSelection"
+      >
+        <VIcon icon="tabler-arrow-left" size="18" />
+        Back to role selection
+      </button>
+    </div>
     
     <!-- Input Form Grid -->
-    <div style="display: flex;">
+    <div class="assessment-layout">
 
       <!-- Main Container Box -->
-      <div style="width: 800px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 8px; padding: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+      <div class="assessment-form-card" style="width: 800px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 8px; padding: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
         
         <!-- Header Title -->
         <header style="text-align: center; margin-bottom: 25px; border-bottom: 2px solid #334155; padding-bottom: 10px;">
@@ -321,7 +463,7 @@ onUnmounted(() => {
               <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer;">
                 <input v-model.number="patientData.past_falls" type="radio" name="recentFalls" value="5" class="border p-2 w-full rounded"> Five (Score: 5)
               </label>
-              <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer;">
+              <label class="assessment-days-since-fall" style="display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer;">
                 <input v-model.number="patientData.days_since_last_fall" type="number" name="daysSinceLastFall" min="0" value="0" class="border p-2 w-full rounded"> days since last fall
               </label>
               <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer;">
@@ -458,18 +600,19 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div style="width: 600px; border: 1px solid #cbd5e1; border-radius: 8px; ">
+          <div class="assessment-side-rail">
+          <div class="assessment-actions-panel" style="width: 600px; border: 1px solid #cbd5e1; border-radius: 8px; ">
             <div class="grid grid-cols-2 gap-4 bg-white p-6 rounded shadow">
               <div class="col-span-2 mt-4">
-                <button @click="submitAssessment" :disabled="isLoading" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                <button @click="submitAssessment" :disabled="isLoading" class="assessment-submit bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                   {{ isLoading ? 'Processing...' : 'Run Assessment & LIME XAI' }}
                 </button>
               </div>
-              <p v-if="errorMessage" class="text-red-500 col-span-2">{{ errorMessage }}</p>
+              <p v-if="errorMessage" class="assessment-error text-red-500 col-span-2">{{ errorMessage }}</p>
             </div>
 
             <!-- Results Panel -->
-            <div v-if="predictionResult" class="bg-gray-50 p-6 rounded border shadow-inner space-y-4">
+            <div v-if="predictionResult" class="assessment-result-panel bg-gray-50 p-6 rounded border shadow-inner space-y-4">
               <h3 class="text-lg font-semibold">Prediction Result: <span class="text-blue-600 font-bold">{{ predictionResult }}</span></h3>
               
               <h4 class="font-medium text-gray-700">LIME Local Feature Explanations:</h4>
@@ -482,86 +625,55 @@ onUnmounted(() => {
             </div>
 	
 	          <!-- Results Panel -->
-            <div v-if="predictionResult" class="bg-gray-50 p-6 rounded border shadow-inner space-y-4">
+            <div v-if="predictionResult" class="assessment-result-panel bg-gray-50 p-6 rounded border shadow-inner space-y-4">
               <h3 class="text-lg font-semibold">Suggestions: </h3>
       
 	            <!-- CASE A: Patient is NOT High Risk (Outputs the simple text note) -->
-	            <div v-if="predictionResult !== 'HIGH' || !interventionResult" class="text-sm text-blue-700 italic">
-		            {{ interventionResult?.note || "Patient is not classified as HIGH risk. Baseline safety precautions are sufficient." }}
-	            </div>
+            <!-- Ages 75–100 are intentionally outside this page's suggestion scope. -->
+            <div v-if="notSuggestedAge" class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">
+              <div class="font-semibold">Not suggested（75–100 岁）</div>
+              <div class="mt-1">This page provides caregiver suggestions only for residents aged 60–74. Follow the facility’s standard fall-assessment process and confirm next steps with the nurse or clinician.</div>
+            </div>
 
-	            <!-- CASE B: Patient IS High Risk (Loops through all options natively using HTML tags) -->
-	            <div v-else class="space-y-2">
-		            <h4 class="font-medium text-gray-700 border-b pb-2">Required Patient Alteration Guide:</h4>
-		
-		            <ul class="list-disc pl-5 space-y-2">
-		              <li v-for="(item, index) in interventionResult.all_options" :key="index" class="text-sm text-gray-800">
-			
-                    <!-- Render this segment if the individual clinical feature can flip the risk level -->
-                    <template v-if="item.can_flip">
-                      <span class="font-mono font-bold text-red-700">{{ item.feature }}</span> 
-                      need to change from <span class="font-semibold">{{ item.from }}</span> 
-                      to <span class="text-emerald-600 font-bold">{{ item.to }}</span>.
-                    </template>
-        
-                    <!-- Render this fallback segment if the single feature adjustment is insufficient -->
-                    <template v-else>
-                      <span class="text-gray-400 italic">
-                      [Restricted] Altering '<span class="font-mono font-medium">{{ item.feature }}</span>' alone is insufficient.
-                      </span>
-                    </template>
-		              </li>
-		            </ul>
-	            </div>
-          </div>
+            <!-- Render the evidence-backed suggestion.items returned by /predict. -->
+            <div v-else-if="suggestionItems.length" class="space-y-2">
+              <h4 class="font-medium text-gray-700 border-b pb-2">Care actions for this assessment:</h4>
 
-          <!-- Extracted AI Suggestions Module -->
-          <div v-if="predictionResult" class="section-container mt-6">
-            <h3 class="section-title">AI Real-Time Proactive Suggestions</h3>
-            
-            <div id="suggestionsWrapper" class="suggestions-container">
-              
-              <!-- CASE A: Critical Baseline Lockout (Age 85, Falls 5 Case) -->
-              <div 
-                v-if="interventionResult?.all_options && !interventionResult.all_options.some(o => o.can_flip)"
-                class="suggestion-item-card" 
-                style="animation-delay: 0ms; border-left: 3px solid #ef4444;"
-              >
-                <span class="suggestion-bullet" style="color: #ef4444;">⚠️</span>
-                <p>
-                  <strong>Multi-Disciplinary Care Required:</strong> Patient's unchangeable baseline profile parameters (Age / Past Falls) are mathematically dominant. Alleviating single modifiable attributes independently is completely insufficient to change the prediction. Immediate comprehensive clinical triage protocol required.
-                </p>
-              </div>
-          
-              <!-- CASE B: Actionable Variable Intervention Paths Open -->
-              <template v-else>
-                <div 
-                  v-for="(item, idx) in interventionResult?.all_options" 
-                  :key="idx"
-                  v-show="item.can_flip"
-                  class="suggestion-item-card" 
-                  :style="{ animationDelay: (idx * 100) + 'ms' }"
-                >
-                  <span class="suggestion-bullet">✦</span>
-                  <p>
-                    Optimize modifiable metric <strong style="color: #2563eb; text-transform: uppercase;">{{ item.feature.replace(/_/g, ' ') }}</strong>: 
-                    Reduce score value from <span style="font-weight: 600;">{{ item.from }}</span> 
-                    down to a target threshold of <span style="color: #10b981; font-weight: 700;">{{ item.to }}</span> to successfully flip the prediction model and lower the global risk level.
-                  </p>
-                </div>
-              </template>
+              <ul class="list-disc pl-5 space-y-2">
+                <li v-for="(item, index) in suggestionItems" :key="item.feature || index" class="text-sm text-gray-800">
+                  <span class="font-semibold">{{ suggestionLabel(item) }}</span>
+                  <span class="text-gray-700"> — {{ suggestionAction(item) }}</span>
+                  <span v-if="priorityLabel(item.priority_label)" class="ml-1 text-xs text-gray-500">({{ priorityLabel(item.priority_label) }})</span>
+                  <span v-if="Array.isArray(item.references) && item.references.length" class="block text-xs text-blue-700 mt-1">
+                    Evidence:
+                    <a
+                      v-for="reference in item.references"
+                      :key="reference.id || reference.url"
+                      :href="reference.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="underline mr-2"
+                    >
+                      {{ referenceTitle(reference) }}
+                    </a>
+                  </span>
+                </li>
+              </ul>
+            </div>
 
+            <!-- Keep the previous short fallback for records with no matched action. -->
+            <div v-else class="text-sm text-blue-700 italic">
+              {{ suggestionNote(interventionResult?.note) }}
             </div>
           </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- Right Side SVG Canvas Area (Occupies 3 columns in tailwind) -->
-    <div class="lg:col-span-3 flex justify-center items-center p-6 bg-slate-950 rounded-lg border border-slate-900 shadow-inner min-h-[390px] w-full overflow-visible">
+      </div>
+    <!-- Right Side SVG Canvas Area (Occupies the second column on wide screens) -->
+    <div class="assessment-radar-card flex justify-center items-center p-6 bg-slate-950 rounded-lg border border-slate-900 shadow-inner min-h-[390px] w-full overflow-visible">
       
       <!-- Expanded grid margins from 360 to 450 to accommodate long multi-word labels cleanly -->
-      <svg width="100%" height="340" viewBox="-240 -160 480 320" class="overflow-visible select-none">
+      <svg width="100%" height="340" viewBox="-200 -160 400 320" class="overflow-visible select-none">
+        <g class="radar-plot" transform="scale(1.3)">
         <!-- Grid Spoke Axis Lines -->
         <line v-for="(angle, idx) in angles" :key="'spoke-'+idx" x1="0" y1="0" :x2="100 * Math.sin(angle)" :y2="-100 * Math.cos(angle)" stroke="#1e293b" stroke-width="1.25" />
         
@@ -580,20 +692,31 @@ onUnmounted(() => {
         <!-- Dynamic Joint Nodes -->
         <circle v-for="(pt, idx) in radarPointsArray" :key="'node-'+idx" :cx="pt.x" :cy="pt.y" :r="pt.isActive ? 7 : 4" :fill="getFeatureDirection(featureLabels[idx]).includes('push') ? '#ef4444' : '#10b981'" stroke="#090d16" stroke-width="1.5" />
 
+        </g>
+
         <!-- Fixed Axis Text Labels (14 total elements looping smoothly) -->
         <text
           v-for="(lbl, idx) in radarLabelsArray" :key="'label-'+idx" :x="lbl.x" :y="lbl.y" :text-anchor="lbl.textAnchor" dominant-baseline="central"
+          :aria-label="lbl.fullName"
+          :fill="getFeatureDirection(featureLabels[idx]).includes('push') ? '#fb7185' : '#34d399'"
           :class="[
-            'text-[9px] font-mono transition-all duration-300 font-bold', 
+            'text-[9px] transition-all duration-300 font-bold',
             lbl.isActive ? 'font-black scale-110' : '', 
             getFeatureDirection(featureLabels[idx]).includes('push') ? 'fill-rose-400 font-bold' : 'fill-emerald-400 font-bold'
           ]"
         >
+          <title>{{ lbl.fullName }}</title>
           {{ lbl.name }}
         </text>
       </svg>
     
     </div>
+
+    </div>
+
+    </div>
+
+  </div>
 
 </template>
 
@@ -633,6 +756,107 @@ onUnmounted(() => {
 /* Smooth morphing transitions for the SVG polygon shape */
 polygon, line, circle {
   transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+</style>
+
+<style scoped>
+.fall-risk-assessment {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-inline-size: 1480px;
+  margin-inline: auto;
+}
+
+.assessment-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 22px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.16);
+  border-radius: 16px;
+  background:
+    linear-gradient(120deg, rgba(var(--v-theme-primary), 0.11), rgba(var(--v-theme-info), 0.04)),
+    rgb(var(--v-theme-surface));
+  box-shadow: 0 8px 24px rgba(var(--v-theme-on-background), 0.04);
+}
+
+.assessment-toolbar__identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.assessment-toolbar__icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  inline-size: 46px;
+  block-size: 46px;
+  border-radius: 13px;
+  background: rgba(var(--v-theme-primary), 0.13);
+  color: rgb(var(--v-theme-primary));
+}
+
+.assessment-toolbar__eyebrow {
+  color: rgb(var(--v-theme-primary));
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+
+.assessment-toolbar h1 {
+  margin: 3px 0 2px;
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.assessment-toolbar p {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.8rem;
+}
+
+.assessment-toolbar__back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-block-size: 40px;
+  padding: 0 15px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.25);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-primary), 0.07);
+  color: rgb(var(--v-theme-primary));
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 650;
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.assessment-toolbar__back:hover {
+  background: rgba(var(--v-theme-primary), 0.14);
+  transform: translateX(-2px);
+}
+
+.assessment-toolbar__back:focus-visible {
+  outline: 3px solid rgba(var(--v-theme-primary), 0.28);
+  outline-offset: 2px;
+}
+
+@media (max-width: 700px) {
+  .assessment-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 17px;
+  }
+
+  .assessment-toolbar__back {
+    inline-size: 100%;
+    justify-content: center;
+  }
 }
 </style>
 <style>
@@ -709,5 +933,229 @@ polygon, line, circle {
         opacity: 1;
         transform: translateY(0) scale(1);
     }
+}
+</style>
+
+<style scoped>
+.assessment-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.assessment-form-card,
+.assessment-actions-panel {
+  box-sizing: border-box;
+  inline-size: auto !important;
+  min-inline-size: 0;
+  margin: 0 !important;
+}
+
+.assessment-form-card {
+  grid-column: 1;
+  background: rgb(var(--v-theme-surface));
+}
+
+.assessment-side-rail {
+  display: flex;
+  grid-column: 2;
+  flex-direction: column;
+  align-self: start;
+  gap: 20px;
+  min-inline-size: 0;
+  position: sticky;
+  top: 20px;
+}
+
+.assessment-actions-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: rgba(var(--v-theme-surface), 0.78);
+}
+
+.assessment-actions-panel > .grid {
+  flex: 0 0 auto;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.assessment-side-rail > * {
+  min-inline-size: 0;
+}
+
+.assessment-side-rail .section-container {
+  box-sizing: border-box;
+  inline-size: 100%;
+  max-inline-size: none;
+  margin-top: 0 !important;
+}
+
+.assessment-submit {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgb(var(--v-theme-primary)), rgb(var(--v-theme-info)));
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+}
+
+.assessment-submit:hover:not(:disabled) {
+  box-shadow: 0 8px 18px rgba(var(--v-theme-primary), 0.25);
+  transform: translateY(-1px);
+}
+
+.assessment-submit:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.assessment-submit:focus-visible {
+  outline: 3px solid rgba(var(--v-theme-primary), 0.3);
+  outline-offset: 2px;
+}
+
+.assessment-error {
+  margin: 0;
+  color: rgb(var(--v-theme-error));
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.assessment-result-panel {
+  margin: 0 !important;
+  border-color: rgba(var(--v-theme-primary), 0.16) !important;
+  background: rgba(var(--v-theme-primary), 0.045) !important;
+  color: rgb(var(--v-theme-on-surface));
+  overflow-wrap: anywhere;
+}
+
+.assessment-radar-card {
+  align-self: start;
+  inline-size: 100%;
+  min-block-size: 330px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: #0b1526;
+}
+
+.assessment-radar-card svg {
+  display: block;
+  block-size: 300px;
+  max-inline-size: 100%;
+}
+
+.assessment-radar-card text {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  paint-order: stroke fill;
+  stroke: rgba(11, 21, 38, 0.75);
+  stroke-width: 1.25px;
+}
+
+.assessment-form-card ul {
+  margin: 6px 0 0;
+  padding-inline-start: 18px;
+  line-height: 1.45;
+}
+
+.assessment-form-card input[type='checkbox'] {
+  inline-size: 16px !important;
+  block-size: 16px;
+  padding: 0 !important;
+  flex: 0 0 auto;
+}
+
+.assessment-form-card input[type='radio'] {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1050px) {
+  .assessment-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assessment-form-card,
+  .assessment-side-rail {
+    grid-column: auto;
+  }
+
+  .assessment-side-rail {
+    position: static;
+  }
+
+  .assessment-radar-card {
+    min-block-size: 330px;
+  }
+}
+
+@media (max-width: 700px) {
+  .assessment-layout {
+    gap: 14px;
+  }
+
+  .fall-risk-assessment {
+    gap: 14px;
+    padding: 14px !important;
+  }
+
+  .assessment-form-card {
+    padding: 18px !important;
+  }
+
+  .assessment-form-card > header h1 {
+    font-size: 1.45rem !important;
+    line-height: 1.25;
+  }
+
+  .assessment-radar-card {
+    min-block-size: 285px;
+    padding: 8px !important;
+  }
+
+  .assessment-radar-card svg {
+    block-size: 260px;
+  }
+
+  .assessment-form-card > div[style*='display: flex'] {
+    flex-wrap: wrap;
+  }
+
+  .assessment-form-card [name='daysSinceLastFall'] {
+    inline-size: 108px !important;
+  }
+
+  .assessment-days-since-fall {
+    gap: 2px !important;
+  }
+
+  .assessment-form-card [style*='grid-template-columns: 1fr 1fr'] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .assessment-radar-card text {
+    font-size: 10px;
+    stroke-width: 1px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assessment-submit,
+  .assessment-toolbar__back {
+    transition: none;
+  }
 }
 </style>

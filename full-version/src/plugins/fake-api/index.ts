@@ -39,7 +39,18 @@ const worker = setupWorker(
   ...handlerDashboard,
 )
 
+// The fall-risk experience talks to the real FastAPI service.  Starting the
+// template's mock worker unconditionally makes it intercept Vite's lazy-loaded
+// route modules in development (and an old registration can keep doing so
+// even after this file changes).  Keep the demo API available, but require an
+// explicit opt-in so the production-facing fall-risk flow is not affected.
+const fakeApiEnabled = import.meta.env.VITE_ENABLE_FAKE_API === 'true'
+  || import.meta.env.VITE_ENABLE_MSW === 'true'
+
 export default function () {
+  if (!fakeApiEnabled)
+    return
+
   const workerUrl = `${import.meta.env.BASE_URL ?? '/'}mockServiceWorker.js`
 
   worker.start({

@@ -3,23 +3,43 @@ import { ofetch } from 'ofetch'
 const BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 
 let _token: string | null = null
+let _tokenPromise: Promise<string> | null = null
 
 async function ensureToken(): Promise<string> {
   if (_token)
     return _token
 
-  const body = new URLSearchParams()
-  body.append('username', 'admin_clinician')
-  body.append('password', 'password123')
+  // The dashboard mounts several data consumers at once. Share the first
+  // token request so a cold start does not fan out into multiple logins.
+  if (_tokenPromise)
+    return _tokenPromise
 
-  const res = await ofetch(`${BASE}/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-  })
+  _tokenPromise = (async () => {
+    const body = new URLSearchParams()
+    body.append('username', 'admin_clinician')
+    body.append('password', 'password123')
 
-  _token = res.access_token
-  return _token
+    const res = await ofetch(`${BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+
+    const accessToken = res?.access_token
+    if (typeof accessToken !== 'string' || !accessToken)
+      throw new Error('Authentication failed: token missing from response')
+
+    _token = accessToken
+
+    return accessToken
+  })()
+
+  try {
+    return await _tokenPromise
+  }
+  finally {
+    _tokenPromise = null
+  }
 }
 
 export async function apiGet<T = any>(path: string, query?: Record<string, any>): Promise<T> {

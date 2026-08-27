@@ -9,6 +9,14 @@ import { redirects, routes } from './additional-routes'
 import { setupGuards } from './guards'
 
 function recursiveLayouts(route: RouteRecordRaw): RouteRecordRaw {
+  // The caregiver dashboard owns a nested `:id` detail route, so it is the
+  // one page route with children that must still receive the app layout at
+  // its parent level. Calling `setupLayouts` before descending lets the
+  // layout plugin keep the child route inside that layout without creating a
+  // second nested default layout for the detail view.
+  if (route.name === 'dashboards-fall-risk-dashboard')
+    return setupLayouts([route])[0]
+
   if (route.children) {
     for (let i = 0; i < route.children.length; i++)
       route.children[i] = recursiveLayouts(route.children[i])
