@@ -124,6 +124,8 @@ type SuggestionItem = {
   label_zh?: string
   action: string
   action_zh?: string
+  reduction_goal?: string
+  reduction_goal_zh?: string
   attention_rule?: string
   value?: unknown
   weight?: number | string
@@ -357,10 +359,12 @@ function suggestionAction(item: SuggestionItem): string {
   // The API owns the evidence-backed wording and the references attached to
   // it. Do not replace it with a second, potentially inconsistent rule set in
   // the browser. Legacy rows still get a clear fallback instead of blank text.
-  return englishText(
+  const action = englishText(
     item.action,
     englishText(item.action_zh, 'Use on-site observations and ask the nurse or clinician to confirm the next care step.'),
   )
+  const goal = englishText(item.reduction_goal, '')
+  return goal ? `${action} Target: ${goal}. Re-run the assessment to confirm whether the risk band changes.` : action
 }
 
 function suggestionLabel(item: SuggestionItem): string {
@@ -436,9 +440,9 @@ const suggestionGroups = computed(() => {
   }))
 
   const meta = [
-    { key: 1, title: 'High priority · larger model contribution', color: 'error' },
-    { key: 2, title: 'Medium priority · moderate model contribution', color: 'warning' },
-    { key: 3, title: 'Low priority · smaller model contribution', color: 'info' },
+    { key: 1, title: 'High priority', color: 'error' },
+    { key: 2, title: 'Medium priority', color: 'warning' },
+    { key: 3, title: 'Low priority', color: 'info' },
   ]
 
   return meta
@@ -691,7 +695,7 @@ async function handleDownloadPdf() {
               Care recommendations
             </VCardTitle>
             <VCardSubtitle v-if="!recommendationsNotSuggested && suggestion.band">
-              Age band {{ suggestion.band }} · Actionable care steps ranked by this assessment’s LIME weights
+              Age band {{ suggestion.band }} · Actionable care steps ranked by priority
             </VCardSubtitle>
               <VCardSubtitle v-else-if="isNotSuggestedAge">
               Age band 75–100 · Not suggested
@@ -724,24 +728,13 @@ async function handleDownloadPdf() {
           <template v-else>
             <VDivider />
 
-            <VCardText v-if="suggestionsWithoutLime">
-              <VAlert
-                color="warning"
-                variant="tonal"
-                density="compact"
-                class="mb-0"
-              >
-                {{ suggestionsWithoutLime }} recommendation(s) have no valid LIME weight. They are shown as on-site attention prompts and should not be described as high, medium or low contribution.
-              </VAlert>
-            </VCardText>
-
             <VCardText v-if="unrankedSuggestions.length">
               <div class="d-flex align-center gap-2 mb-2">
                 <span
                   class="priority-dot"
                   style="background: rgb(var(--v-theme-warning))"
                 />
-                <span class="text-subtitle-2 font-weight-medium">On-site attention · no valid LIME priority</span>
+                <span class="text-subtitle-2 font-weight-medium">On-site attention</span>
               </div>
 
               <div
@@ -754,48 +747,6 @@ async function handleDownloadPdf() {
                 </div>
                 <div class="text-body-2 mt-1">
                   {{ suggestionAction(it) }}
-                </div>
-                <div
-                  v-if="suggestionAttentionRule(it)"
-                  class="text-caption text-warning mt-1"
-                >
-                  Attention flag: {{ suggestionAttentionRule(it) }}
-                </div>
-                <div class="text-caption text-medium-emphasis mt-1">
-                  No local model weight is available for this record; do not place this item in a high, medium or low contribution group.
-                </div>
-
-                <div
-                  v-if="suggestionReferences(it).length"
-                  class="suggestion-reference-row"
-                >
-                  <VIcon
-                    icon="tabler-book-2"
-                    size="15"
-                    class="me-1"
-                  />
-                  <span class="text-caption text-medium-emphasis me-1">Evidence:</span>
-                  <a
-                    v-for="reference in suggestionReferences(it)"
-                    :key="reference.id || reference.url"
-                    :href="reference.url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="suggestion-reference-link"
-                  >
-                    {{ reference.title }}
-                  </a>
-                </div>
-                <div
-                  v-else
-                  class="suggestion-reference-row text-caption text-warning"
-                >
-                  <VIcon
-                    icon="tabler-alert-circle"
-                    size="15"
-                    class="me-1"
-                  />
-                  No verified source is available. Ask the nurse or clinician to confirm this recommendation before acting on it.
                 </div>
               </div>
             </VCardText>
@@ -831,78 +782,9 @@ async function handleDownloadPdf() {
                       <div class="text-body-2 mt-1">
                         {{ suggestionAction(it) }}
                       </div>
-                      <div
-                        v-if="suggestionModelEffect(it)"
-                        class="text-caption text-medium-emphasis mt-1"
-                      >
-                        Model direction: {{ suggestionModelEffect(it) }}
-                        <span v-if="it.lime_available === false">(no valid LIME weight)</span>
-                      </div>
-                      <div
-                        v-if="suggestionAttentionRule(it)"
-                        class="text-caption text-warning mt-1"
-                      >
-                        Attention flag: {{ suggestionAttentionRule(it) }}
-                      </div>
-                      <div
-                        v-if="suggestionRiskWeightText(it)"
-                        class="text-caption text-medium-emphasis mt-1"
-                      >
-                        Absolute LIME contribution for this assessment: {{ suggestionRiskWeightText(it) }}
-                        <VChip
-                          v-if="it.clinical_attention"
-                          color="error"
-                          size="x-small"
-                          variant="tonal"
-                          class="ms-1"
-                        >
-                          Nurse/clinician review required
-                        </VChip>
-                        <VChip
-                          v-if="it.clinical_override && !it.clinical_attention"
-                          color="warning"
-                          size="x-small"
-                          variant="tonal"
-                          class="ms-1"
-                        >
-                          Clinical trigger; do not interpret as directional
-                        </VChip>
-                      </div>
                     </div>
                   </div>
 
-                  <div
-                    v-if="suggestionReferences(it).length"
-                    class="suggestion-reference-row"
-                  >
-                    <VIcon
-                      icon="tabler-book-2"
-                      size="15"
-                      class="me-1"
-                    />
-                    <span class="text-caption text-medium-emphasis me-1">Evidence:</span>
-                    <a
-                      v-for="reference in suggestionReferences(it)"
-                      :key="reference.id || reference.url"
-                      :href="reference.url"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="suggestion-reference-link"
-                    >
-                      {{ reference.title }}
-                    </a>
-                  </div>
-                  <div
-                    v-else
-                    class="suggestion-reference-row text-caption text-warning"
-                  >
-                    <VIcon
-                      icon="tabler-alert-circle"
-                      size="15"
-                      class="me-1"
-                    />
-                    No verified source is available. Ask the nurse or clinician to confirm this recommendation before acting on it.
-                  </div>
                 </div>
               </VCardText>
             </template>

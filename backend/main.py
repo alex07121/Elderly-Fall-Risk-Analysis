@@ -475,6 +475,25 @@ def _is_elevated_feature(feature: str, value, features: Optional[dict] = None) -
     return False
 
 
+def _reduction_goal(feature: str) -> tuple[str, str]:
+    """Return a measurable safer target for caregiver follow-up."""
+    goals = {
+        "night_bed_exits": ("Aim for 0–1 assisted exits/night", "目标：在照护计划下减少至每晚 0–1 次"),
+        "night_activity_duration_min": ("Aim for ≤30 minutes of night activity", "目标：夜间活动时间降至 ≤30 分钟"),
+        "mobility_score": ("Improve mobility score to ≥5/10", "目标：活动能力评分提升至 ≥5/10"),
+        "tug_seconds": ("Improve TUG to <12 seconds", "目标：TUG 改善至 <12 秒"),
+        "polypharmacy_count": ("Review medicines and reduce unnecessary medicines", "目标：完成用药审查并减少不必要药物"),
+        "high_risk_medication": ("Clinician review; do not stop medicines without an order", "目标：由临床人员复核高风险药物，勿自行停药"),
+        "orthostatic_hypotension": ("Reduce postural dizziness/hypotension under the care plan", "目标：按照护计划改善体位性低血压/头晕"),
+        "past_falls": ("Prevent any further falls and reassess after the care plan is implemented", "目标：避免再次跌倒，执行照护计划后重新评估"),
+        "cognitive_impairment": ("Maintain supervision and reassess cognition", "目标：维持监督并重新评估认知状态"),
+        "days_since_last_fall": ("Increase fall-free days; reassess after 30 days", "目标：增加无跌倒天数，30 天后复评"),
+        "syncopal_fall": ("Urgent clinical review of the fainting episode", "目标：尽快由临床人员评估晕厥事件"),
+        "fall_cluster_30d": ("Urgent comprehensive falls assessment", "目标：尽快完成综合跌倒评估"),
+    }
+    return goals.get(feature, ("Reassess after the intervention; the model must be rerun to confirm a lower risk band", "目标：干预后重新评估并重新运行模型确认风险分级"))
+
+
 def build_risk_drivers(
     features: dict,
     lime_explanations=None,
@@ -589,6 +608,7 @@ def _suggest_60_74(
             if not (key == "ags_beers" and isinstance(age, (int, float)) and age < 65)
         ]
         references = [dict(REFERENCE_LIBRARY[key]) for key in usable_reference_keys]
+        reduction_goal, reduction_goal_zh = _reduction_goal(feature)
         if level == "MEDIUM":
             model_effect_zh = (
                 "支持当前中风险分级" if raw_weight > 0
@@ -618,6 +638,8 @@ def _suggest_60_74(
             "value": _display_value(feature, features.get(feature), features),
             "action": action,
             "action_zh": ACTION_ZH.get(feature, action),
+            "reduction_goal": reduction_goal,
+            "reduction_goal_zh": reduction_goal_zh,
             "weight": round(raw_weight, 4),
             "lime_weight": round(raw_weight, 4),
             "risk_weight": round(risk_weight, 4),
@@ -637,6 +659,8 @@ def _suggest_60_74(
             # These are care-process flags, not diagnoses or a replacement for
             # the facility's clinical urgency policy.
             "clinical_attention": feature in {"syncopal_fall", "fall_cluster_30d", "days_since_last_fall"},
+            # Prioritize the feature that contributes most to the current
+            # model output; the action itself describes how to reduce it.
             "_score": abs(raw_weight),
         })
 

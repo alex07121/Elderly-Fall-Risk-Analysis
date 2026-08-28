@@ -644,19 +644,6 @@ onUnmounted(() => {
                   <span class="font-semibold">{{ suggestionLabel(item) }}</span>
                   <span class="text-gray-700"> — {{ suggestionAction(item) }}</span>
                   <span v-if="priorityLabel(item.priority_label)" class="ml-1 text-xs text-gray-500">({{ priorityLabel(item.priority_label) }})</span>
-                  <span v-if="Array.isArray(item.references) && item.references.length" class="block text-xs text-blue-700 mt-1">
-                    Evidence:
-                    <a
-                      v-for="reference in item.references"
-                      :key="reference.id || reference.url"
-                      :href="reference.url"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="underline mr-2"
-                    >
-                      {{ referenceTitle(reference) }}
-                    </a>
-                  </span>
                 </li>
               </ul>
             </div>

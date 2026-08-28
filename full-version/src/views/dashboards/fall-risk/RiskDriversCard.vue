@@ -319,13 +319,6 @@ const allDrivers = computed(() => rawExplanations.value
 
     const finalImpact: 'risk' | 'protective' | 'neutral' = item.impact === 'risk' || item.impact === 'protective' || item.impact === 'neutral' ? item.impact : impact
     const modelEffect = modelEffectText(item.model_effect || item.model_effect_en, level, weight, riskWeight)
-    const impactLabel = level === 'MEDIUM'
-      ? modelEffect
-      : finalImpact === 'risk'
-        ? 'Raises the current risk level'
-        : finalImpact === 'protective'
-          ? 'Protective / moves away from the current level'
-          : 'Minimal effect'
     const rank = Number(item.rank)
     const fallbackLabel = keys.map(key => featureByKey.get(key)?.label ?? key).join(' + ') || 'Model feature'
     const label = englishFallback(item.label || item.label_en, fallbackLabel)
@@ -347,7 +340,6 @@ const allDrivers = computed(() => rawExplanations.value
       riskWeightText: `${riskWeight >= 0 ? '+' : ''}${riskWeight.toFixed(4)}`,
       directionText: modelEffect,
       impact: finalImpact,
-      impactLabel,
       modelEffect,
       attentionRule,
       limeAvailable: item.lime_available !== false,
@@ -382,7 +374,6 @@ function decorateDrivers(source: typeof allDrivers.value, referenceSource: typeo
         ? 'info'
         : item.impact === 'risk' ? 'error' : item.impact === 'protective' ? 'success' : 'info',
       bar: Math.round(ratio * 100),
-      statusLabel: item.elevated ? 'Review current value' : item.impact === 'risk' ? 'Model direction (below attention threshold)' : 'Protective / background',
     }
   })
 }
@@ -452,23 +443,8 @@ const missingLimeCount = computed(() => drivers.value.filter(driver => !driver.l
               </div>
               <div class="text-caption text-medium-emphasis">
                 Current value: {{ driver.valueText }}
-                <span
-                  v-if="driver.elevated || driver.impact === 'risk'"
-                  class="risk-driver__signal"
-                >
-                  · {{ driver.statusLabel }}
-                </span>
               </div>
             </div>
-
-            <VChip
-              :color="driver.impactColor"
-              size="small"
-              variant="tonal"
-              class="risk-driver__impact"
-            >
-              {{ driver.elevated ? 'Review current value' : driver.impactLabel }}
-            </VChip>
 
             <span class="risk-driver__weight text-caption font-weight-bold">
               {{ riskLevel === 'MEDIUM' ? 'Current-level contribution' : 'Risk contribution' }} {{ driver.riskWeightText }}
@@ -525,8 +501,7 @@ const missingLimeCount = computed(() => drivers.value.filter(driver => !driver.l
   gap: 0.65rem;
 }
 
-.risk-driver__priority,
-.risk-driver__impact {
+.risk-driver__priority {
   flex: 0 0 auto;
 }
 
@@ -547,11 +522,6 @@ const missingLimeCount = computed(() => drivers.value.filter(driver => !driver.l
   text-align: end;
 }
 
-.risk-driver__signal {
-  color: rgb(var(--v-theme-error));
-  font-weight: 600;
-}
-
 @media (max-width: 600px) {
   .risk-driver__head {
     align-items: flex-start;
@@ -560,10 +530,6 @@ const missingLimeCount = computed(() => drivers.value.filter(driver => !driver.l
 
   .risk-driver__identity {
     min-inline-size: calc(100% - 5.5rem);
-  }
-
-  .risk-driver__impact {
-    margin-inline-start: 2.5rem;
   }
 
   .risk-driver__weight {
