@@ -320,7 +320,7 @@ def _number(value):
 def _feature_from_condition(condition: str) -> Optional[str]:
     """Extract an exact model feature token from a LIME condition string."""
     for feature in sorted(MODEL_FEATURES, key=len, reverse=True):
-        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(feature)}(?![A-Za-z0-9_])", condition):
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(feature)}(?![A-Za-z0-9_])", condition, re.IGNORECASE):
             return feature
     return None
 

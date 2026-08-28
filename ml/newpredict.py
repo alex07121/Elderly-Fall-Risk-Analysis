@@ -95,6 +95,10 @@ def explain_patient(features: dict, max_features: int = 5) -> list:
         weight = coefficients[i] * row[i]
         direction = f"push HIGH" if (predicted_class == "HIGH" and weight > 0) else "pull away"
         explanations.append({
+            # Keep the canonical model feature token alongside the
+            # human-readable condition so backend normalisation and the UI
+            # can reliably map each explanation back to an input field.
+            "feature": name,
             "condition": f"{name.upper()} state baseline",
             "weight": round(float(weight), 4),
             "direction": direction
