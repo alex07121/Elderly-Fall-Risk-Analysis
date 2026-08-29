@@ -21,3 +21,6 @@ full-version/_jtest_tgt
 # IDE
 .vscode/
 .idea/
+
+# macOS Finder metadata
+.DS_Store

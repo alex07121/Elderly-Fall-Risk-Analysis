@@ -1,5 +1,14 @@
 # Fall Risk Model + LIME - Final Handover (Logistic Regression)
 
+## macOS setup
+
+Double-click `deploy/setup_and_run.command` (or run `bash deploy/setup_and_run.command` from the project root). The launcher installs the Python dependencies, uses Corepack/project-local pnpm without requiring `sudo`, starts the FastAPI and Vite servers, waits for both health checks, and opens the dashboard.
+
+- Dashboard: `http://127.0.0.1:5173`
+- API docs: `http://127.0.0.1:8000/docs`
+- Python 3.10+ is required; an existing Python 3.9 virtual environment is recreated automatically.
+- Keep the two server Terminal windows open while using the dashboard.
+
 **From:** KWAN Kwan Ip (ML Module) -> Teammate (API Module)
 
 ## Model
