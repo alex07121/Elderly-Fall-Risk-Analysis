@@ -114,8 +114,13 @@ tell application "Terminal"
 end tell
 APPLESCRIPT
 
-# Give Vite a moment to start before opening the browser.
-sleep 3
+# Wait briefly for Vite to become reachable before opening the browser.
+for attempt in {1..30}; do
+  if curl --silent --fail --output /dev/null http://localhost:5173; then
+    break
+  fi
+  sleep 1
+done
 open "http://localhost:5173"
 
 say "启动完成。"

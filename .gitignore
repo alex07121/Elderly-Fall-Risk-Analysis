@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
+.venv*/
 
 # Databases (auto-created at runtime)
 *.db
