@@ -262,16 +262,16 @@ All figures below are **reproducible** by running `python ml/experiments/final_m
 
 ### 8.2 Hold-out test set (n = 200, threshold = 0.50)
 
-| Class        | Precision | Recall   | F1-score | Support |
-| ------------ | --------- | -------- | -------- | ------- |
-| HIGH         | 0.87      | **1.00** | 0.93     | 53      |
-| LOW          | 0.80      | 0.97     | 0.88     | 34      |
-| MEDIUM       | 0.99      | 0.86     | 0.92     | 113     |
-| **accuracy** |           |          | **0.92** | 200     |
-| macro avg    | 0.89      | 0.94     | 0.91     | 200     |
-| weighted avg | 0.93      | 0.92     | 0.92     | 200     |
+| Class        | P   | R       | F1     | n   |
+| ------------ | --- | ------- | ------ | --- |
+| HIGH         | 0.87 | **1.00** | 0.93   | 53  |
+| LOW          | 0.80 | 0.97    | 0.88   | 34  |
+| MEDIUM       | 0.99 | 0.86    | 0.92   | 113 |
+| **accuracy** |     |         | **0.92** | 200 |
+| macro avg    | 0.89 | 0.94    | 0.91   | 200 |
+| weighted avg | 0.93 | 0.92    | 0.92   | 200 |
 
-**Headline results: overall test accuracy 91.5%; HIGH-risk recall 100% (53/53 caught, 0 missed).**
+**Headline results: overall test accuracy 91.5%; HIGH-risk recall 100% (53/53 caught, 0 missed).** *(P = Precision, R = Recall, F1 = F1-score, n = Support)*
 
 ### 8.3 Overfitting check — triple evidence
 
