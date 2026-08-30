@@ -81,7 +81,7 @@ These three goals map directly to the system's three headline features: **predic
 | ML       | `ml/`                                      | scikit-learn, LIME, NumPy, joblib                      | Training (`train.py`), inference + explanation (`newpredict.py`), model artifacts |
 | Backend  | `backend/`                                 | FastAPI, SQLAlchemy (async) + SQLite, PyJWT, ReportLab | REST API (port 8000), JWT auth, assessment history, PDF export                    |
 | Frontend | `full-version/`                            | Vue 3 + Vuetify 3 + Vite + TypeScript (pnpm)           | Clinician dashboard (port 5173)                                                   |
-| Deploy   | `deploy/`, `full-version/docker-compose.*` | Shell launchers, Docker, nginx                         | One-click local run; optional containerised dev/prod                              |
+| Deploy   | `deploy/`                                  | Shell launchers (macOS `.command` / Windows `.bat`)    | One-click local run                                                                |
 
 ### 3.2 End-to-End Data Flow
 
@@ -103,7 +103,7 @@ These three goals map directly to the system's three headline features: **predic
 | Database  | SQLite via SQLAlchemy (asyncio) + aiosqlite — local file `backend/predict.db`           |
 | Reporting | ReportLab (PDF), openpyxl (xlsx batch import)                                           |
 | Frontend  | Vue 3, Vuetify 3, Vite, TypeScript, pnpm                                                |
-| Deploy    | `.command` / `.bat` launchers; Docker Compose (dev/prod) + nginx                        |
+| Deploy    | `.command` / `.bat` one-click launchers (macOS / Windows)                              |
 
 ---
 
@@ -111,7 +111,7 @@ These three goals map directly to the system's three headline features: **predic
 
 **Prerequisites:** Python 3.10+, Node.js 18+ with pnpm (`corepack enable`, or the launcher installs it locally). No cloud account, no external database, and no API keys are required.
 
-### Option A — One-click launch (recommended)
+### Option A — One-click launch
 
 - **macOS:** double-click `deploy/setup_and_run.command` (or run `bash deploy/setup_and_run.command`)
 - **Windows:** double-click `deploy/setup_and_run.bat`
@@ -123,16 +123,6 @@ The launcher creates a virtual environment, installs Python dependencies, starts
 | Username          | Password      | Note                                             |
 | ----------------- | ------------- | ------------------------------------------------ |
 | `admin_clinician` | `password123` | Demo default — change before any real deployment |
-
-### Option B — Docker
-
-```bash
-cd full-version
-docker compose -f docker-compose.dev.yml up --build     # development
-docker compose -f docker-compose.prod.yml up --build    # production (nginx-served)
-```
-
-Copy `.env.example` to `.env` and set `VITE_API_BASE_URL` before building the production image.
 
 ### Retraining the model (optional)
 
