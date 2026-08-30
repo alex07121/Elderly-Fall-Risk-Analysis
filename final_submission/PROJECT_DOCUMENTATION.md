@@ -439,16 +439,16 @@ The dashboard therefore serves as both a **presentation tool** (showing the proc
 ## Appendix A — Project Structure
 
 ```
-├── data/                  # Dataset (2,000 records) + batch import template
-├── ml/                    # train.py, newpredict.py (inference + explanation), artifacts
-│   └── experiments/       # k-fold CV, SHAP, class balance, fair_compare.py,
-│                          # final_model.py (saved/ producer), dashboard.py (Model Evolution)
-├── backend/               # FastAPI app: main.py, models.py, database.py
-├── full-version/          # Vue 3 + Vuetify dashboard (pnpm/Vite)
-├── saved/                 # final_model.pkl, label_encoder.pkl, features.json, threshold.json
-├── deploy/                # One-click launchers (macOS/Windows) + ML handover notes
-├── docs/                  # architecture.png, user guide
-└── requirements.txt       # Python dependencies (scikit-learn==1.7.2 pinned)
++-- data/                  # Dataset (2,000 records) + batch import template
++-- ml/                    # train.py, newpredict.py (inference + explanation), artifacts
+|   +-- experiments/       # k-fold CV, SHAP, class balance, fair_compare.py,
+|                          # final_model.py (saved/ producer), dashboard.py (Model Evolution)
++-- backend/               # FastAPI app: main.py, models.py, database.py
++-- full-version/          # Vue 3 + Vuetify dashboard (pnpm/Vite)
++-- saved/                 # final_model.pkl, label_encoder.pkl, features.json, threshold.json
++-- deploy/                # One-click launchers (macOS/Windows) + ML handover notes
++-- docs/                  # architecture.png, user guide
+\-- requirements.txt       # Python dependencies (scikit-learn==1.7.2 pinned)
 ```
 
 ## Appendix B — Batch Import Workflow
