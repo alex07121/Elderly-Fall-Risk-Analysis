@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="820" viewBox="0 0 1440 820" font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <filter id="card-shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1440" height="820" fill="#f8fafc"/>
+  <rect x="24" y="24" width="1392" height="772" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
+
+  <!-- Title -->
+  <text x="720" y="66" text-anchor="middle" font-size="24" font-weight="700" fill="#0f172a">Elderly Fall Risk Analysis — System Architecture &amp; Data Flow</text>
+  <text x="720" y="92" text-anchor="middle" font-size="13" fill="#64748b">Logistic Regression + LIME Explainability · FastAPI · Vue 3 Dashboard</text>
+
+  <!-- ============ Column 1: DATA ============ -->
+  <g filter="url(#card-shadow)">
+    <rect x="60" y="330" width="200" height="160" rx="12" fill="#eff6ff" stroke="#bfdbfe"/>
+    <rect x="60" y="330" width="200" height="34" rx="12" fill="#2563eb"/>
+    <rect x="60" y="352" width="200" height="12" fill="#2563eb"/>
+    <text x="160" y="353" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">DATA</text>
+  </g>
+  <rect x="76" y="382" width="168" height="46" rx="8" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="160" y="401" text-anchor="middle" font-size="11.5" font-weight="600" fill="#1e293b">fall_risk_patients_2000_v2.csv</text>
+  <text x="160" y="419" text-anchor="middle" font-size="11" fill="#64748b">2,000 records · 14 features</text>
+  <rect x="76" y="438" width="168" height="36" rx="8" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="160" y="456" text-anchor="middle" font-size="11" font-weight="600" fill="#1e293b">import_template.xlsx</text>
+  <text x="160" y="469" text-anchor="middle" font-size="10" fill="#64748b">batch import template</text>
+
+  <!-- ============ Column 2: ML LAYER ============ -->
+  <g filter="url(#card-shadow)">
+    <rect x="310" y="180" width="252" height="460" rx="12" fill="#f5f3ff" stroke="#ddd6fe"/>
+    <rect x="310" y="180" width="252" height="34" rx="12" fill="#7c3aed"/>
+    <rect x="310" y="202" width="252" height="12" fill="#7c3aed"/>
+    <text x="436" y="203" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">ML LAYER · ml/</text>
+  </g>
+
+  <rect x="326" y="232" width="220" height="94" rx="8" fill="#ffffff" stroke="#ddd6fe"/>
+  <text x="436" y="252" text-anchor="middle" font-size="12" font-weight="700" fill="#5b21b6">train.py</text>
+  <text x="436" y="271" text-anchor="middle" font-size="10.5" fill="#475569">Logistic Regression</text>
+  <text x="436" y="286" text-anchor="middle" font-size="10.5" fill="#475569">class_weight='balanced'</text>
+  <text x="436" y="301" text-anchor="middle" font-size="10.5" fill="#475569">random_state=42 · test acc ~84%</text>
+  <text x="436" y="316" text-anchor="middle" font-size="10.5" fill="#475569">20% stratified hold-out</text>
+
+  <rect x="326" y="346" width="220" height="78" rx="8" fill="#ffffff" stroke="#ddd6fe"/>
+  <text x="436" y="366" text-anchor="middle" font-size="12" font-weight="700" fill="#5b21b6">Model Artifacts</text>
+  <text x="436" y="385" text-anchor="middle" font-size="10.5" fill="#475569">fall_risk_model.pkl</text>
+  <text x="436" y="400" text-anchor="middle" font-size="10.5" fill="#475569">train_data.npy · top3_features.json</text>
+  <text x="436" y="415" text-anchor="middle" font-size="10.5" fill="#475569">saved/ · features.json</text>
+
+  <rect x="326" y="444" width="220" height="106" rx="8" fill="#ffffff" stroke="#ddd6fe"/>
+  <text x="436" y="464" text-anchor="middle" font-size="12" font-weight="700" fill="#5b21b6">newpredict.py</text>
+  <text x="436" y="483" text-anchor="middle" font-size="10.5" fill="#475569">predict_fall_risk() → LOW/MEDIUM/HIGH</text>
+  <text x="436" y="498" text-anchor="middle" font-size="10.5" fill="#475569">explain_patient() — LIME</text>
+  <text x="436" y="513" text-anchor="middle" font-size="10.5" fill="#475569">get_top3_features()</text>
+  <text x="436" y="537" text-anchor="middle" font-size="10.5" font-weight="600" fill="#7c3aed">Top 3: high_risk_medication ·</text>
+  <text x="436" y="545" text-anchor="middle" font-size="10.5" font-weight="600" fill="#7c3aed" dy="10">cognitive_impairment · past_falls</text>
+
+  <!-- arrow: train -> artifacts -> newpredict (vertical, inside column) -->
+  <line x1="436" y1="326" x2="436" y2="342" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="436" y1="424" x2="436" y2="440" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ============ Column 3: BACKEND ============ -->
+  <g filter="url(#card-shadow)">
+    <rect x="612" y="180" width="272" height="460" rx="12" fill="#f0fdfa" stroke="#99f6e4"/>
+    <rect x="612" y="180" width="272" height="34" rx="12" fill="#0d9488"/>
+    <rect x="612" y="202" width="272" height="12" fill="#0d9488"/>
+    <text x="748" y="203" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">BACKEND · FastAPI :8000</text>
+  </g>
+
+  <rect x="628" y="232" width="240" height="140" rx="8" fill="#ffffff" stroke="#99f6e4"/>
+  <text x="748" y="252" text-anchor="middle" font-size="12" font-weight="700" fill="#115e59">backend/main.py</text>
+  <rect x="644" y="266" width="94" height="20" rx="10" fill="#f0fdfa" stroke="#5eead4"/>
+  <text x="691" y="280" text-anchor="middle" font-size="10" fill="#0f766e">POST /token</text>
+  <rect x="746" y="266" width="106" height="20" rx="10" fill="#f0fdfa" stroke="#5eead4"/>
+  <text x="799" y="280" text-anchor="middle" font-size="10" fill="#0f766e">POST /predict</text>
+  <rect x="644" y="294" width="120" height="20" rx="10" fill="#f0fdfa" stroke="#5eead4"/>
+  <text x="704" y="308" text-anchor="middle" font-size="10" fill="#0f766e">GET /assessments</text>
+  <rect x="772" y="294" width="80" height="20" rx="10" fill="#f0fdfa" stroke="#5eead4"/>
+  <text x="812" y="308" text-anchor="middle" font-size="10" fill="#0f766e">GET …/pdf</text>
+  <rect x="644" y="322" width="120" height="20" rx="10" fill="#f0fdfa" stroke="#5eead4"/>
+  <text x="704" y="336" text-anchor="middle" font-size="10" fill="#0f766e">POST /batch-predict</text>
+  <rect x="772" y="322" width="120" height="20" rx="10" fill="#f0fdfa" stroke="#5eead4"/>
+  <text x="832" y="336" text-anchor="middle" font-size="10" fill="#0f766e">GET /batch-template</text>
+  <text x="748" y="362" text-anchor="middle" font-size="10.5" fill="#475569">JWT auth (OAuth2) · Swagger at /docs</text>
+
+  <rect x="628" y="392" width="240" height="64" rx="8" fill="#ffffff" stroke="#99f6e4"/>
+  <text x="748" y="414" text-anchor="middle" font-size="12" font-weight="700" fill="#115e59">SQLite (async)</text>
+  <text x="748" y="433" text-anchor="middle" font-size="10.5" fill="#475569">backend/predict.db — assessment history</text>
+  <text x="748" y="448" text-anchor="middle" font-size="10.5" fill="#475569">SQLAlchemy + aiosqlite</text>
+
+  <rect x="628" y="476" width="240" height="64" rx="8" fill="#ffffff" stroke="#99f6e4"/>
+  <text x="748" y="498" text-anchor="middle" font-size="12" font-weight="700" fill="#115e59">Services</text>
+  <text x="748" y="517" text-anchor="middle" font-size="10.5" fill="#475569">PDF report export (ReportLab)</text>
+  <text x="748" y="532" text-anchor="middle" font-size="10.5" fill="#475569">Batch xlsx processing (openpyxl)</text>
+
+  <!-- arrow ML -> backend -->
+  <line x1="562" y1="497" x2="608" y2="330" stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="570" y="400" font-size="10.5" fill="#475569" transform="rotate(-59 570 400)">inference</text>
+
+  <!-- arrow backend -> sqlite -->
+  <line x1="748" y1="372" x2="748" y2="388" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ============ Column 4: FRONTEND ============ -->
+  <g filter="url(#card-shadow)">
+    <rect x="934" y="230" width="238" height="360" rx="12" fill="#fff7ed" stroke="#fed7aa"/>
+    <rect x="934" y="230" width="238" height="34" rx="12" fill="#ea580c"/>
+    <rect x="934" y="252" width="238" height="12" fill="#ea580c"/>
+    <text x="1053" y="253" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">FRONTEND · Vue 3 :5173</text>
+  </g>
+
+  <rect x="950" y="282" width="206" height="120" rx="8" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="1053" y="302" text-anchor="middle" font-size="12" font-weight="700" fill="#9a3412">Clinician Dashboard</text>
+  <text x="1053" y="321" text-anchor="middle" font-size="10.5" fill="#475569">Vue 3 + Vuetify 3 + Vite</text>
+  <text x="1053" y="336" text-anchor="middle" font-size="10.5" fill="#475569">full-version/ (pnpm)</text>
+  <text x="1053" y="351" text-anchor="middle" font-size="10.5" fill="#475569">REST + JWT (Bearer token)</text>
+  <text x="1053" y="375" text-anchor="middle" font-size="10.5" font-weight="600" fill="#ea580c">VITE_API_BASE_URL</text>
+  <text x="1053" y="389" text-anchor="middle" font-size="10" fill="#64748b">http://127.0.0.1:8000</text>
+
+  <rect x="950" y="422" width="206" height="148" rx="8" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="1053" y="442" text-anchor="middle" font-size="12" font-weight="700" fill="#9a3412">Key Screens</text>
+  <circle cx="963" cy="461" r="3" fill="#ea580c"/><text x="972" y="465" font-size="10.5" fill="#475569">Patient input → risk level</text>
+  <circle cx="963" cy="483" r="3" fill="#ea580c"/><text x="972" y="487" font-size="10.5" fill="#475569">LIME explanation view</text>
+  <circle cx="963" cy="505" r="3" fill="#ea580c"/><text x="972" y="509" font-size="10.5" fill="#475569">Top-3 risk factors</text>
+  <circle cx="963" cy="527" r="3" fill="#ea580c"/><text x="972" y="531" font-size="10.5" fill="#475569">Batch xlsx import</text>
+  <circle cx="963" cy="549" r="3" fill="#ea580c"/><text x="972" y="553" font-size="10.5" fill="#475569">History + PDF download</text>
+
+  <!-- arrow backend <-> frontend -->
+  <line x1="884" y1="360" x2="930" y2="360" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-accent)" marker-start="url(#arrow-accent)"/>
+  <text x="907" y="348" text-anchor="middle" font-size="10.5" font-weight="600" fill="#2563eb">REST</text>
+
+  <!-- ============ Column 5: CLINICIAN ============ -->
+  <g filter="url(#card-shadow)">
+    <rect x="1222" y="330" width="170" height="160" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+    <circle cx="1307" cy="382" r="26" fill="#e2e8f0"/>
+    <circle cx="1307" cy="374" r="10" fill="#94a3b8"/>
+    <path d="M 1285 402 q 22 -20 44 0 v 12 h -44 z" fill="#94a3b8"/>
+    <text x="1307" y="436" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1e293b">Clinician</text>
+    <text x="1307" y="455" text-anchor="middle" font-size="10.5" fill="#64748b">risk level + explanation</text>
+    <text x="1307" y="470" text-anchor="middle" font-size="10.5" fill="#64748b">→ care decisions</text>
+  </g>
+
+  <!-- arrow frontend -> clinician -->
+  <line x1="1172" y1="410" x2="1218" y2="410" stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ Bottom: data flow strip ============ -->
+  <rect x="60" y="668" width="1332" height="104" rx="12" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text x="726" y="694" text-anchor="middle" font-size="12" font-weight="700" fill="#334155" letter-spacing="1">END-TO-END DATA FLOW</text>
+  <g font-size="11" fill="#334155" font-weight="600">
+    <rect x="92" y="712" width="188" height="40" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="186" y="737" text-anchor="middle">1 · Patient records (CSV)</text>
+    <rect x="318" y="712" width="188" height="40" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="412" y="737" text-anchor="middle">2 · Train LR model</text>
+    <rect x="544" y="712" width="188" height="40" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="638" y="737" text-anchor="middle">3 · Predict + LIME explain</text>
+    <rect x="770" y="712" width="188" height="40" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="864" y="737" text-anchor="middle">4 · FastAPI serves results</text>
+    <rect x="996" y="712" width="188" height="40" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="1090" y="737" text-anchor="middle">5 · Dashboard to clinician</text>
+  </g>
+  <line x1="280" y1="732" x2="314" y2="732" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="506" y1="732" x2="540" y2="732" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="732" y1="732" x2="766" y2="732" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="958" y1="732" x2="992" y2="732" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- arrow data -> ML column -->
+  <line x1="260" y1="410" x2="306" y2="410" stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow)"/>
+</svg>

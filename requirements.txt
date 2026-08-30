@@ -1,0 +1,33 @@
+# Elderly Fall Risk Analysis - Python dependencies
+# Install: pip install -r requirements.txt
+# Python 3.10+ required
+
+# Backend framework
+fastapi[standard]
+uvicorn
+pydantic
+
+# Auth
+pyjwt
+passlib[bcrypt]
+
+# Database (async SQLite)
+sqlalchemy[asyncio]
+aiosqlite
+
+# ML & explainability
+scikit-learn==1.7.2
+lime
+numpy
+pandas
+joblib
+xgboost
+
+# Batch import / PDF export
+openpyxl
+reportlab
+
+# Misc
+python-dotenv
+faker
+gradio

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import UTC, datetime
+from datetime import datetime
 from sqlalchemy import Column, DateTime, Float, Integer, String, Text
 from backend.database import Base
 
