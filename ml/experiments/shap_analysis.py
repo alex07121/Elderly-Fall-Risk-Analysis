@@ -1,5 +1,4 @@
 # SHAP analysis — explain LR model with 10 features (multiple large plots)
-import os
 import pandas as pd
 import numpy as np
 import shap
@@ -10,7 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 # ═══ Load data ═══
-df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv"))
+df = pd.read_csv("fall_risk_patients_2000.csv")
 for col in ["high_risk_medication", "orthostatic_hypotension"]:
     df[col] = df[col].map({True: 1, False: 0})
 
@@ -30,7 +29,7 @@ explainer = shap.LinearExplainer(model, X)
 shap_values = explainer.shap_values(X)   # shape (2000, 10)
 
 # ═══ 圖 1: Summary beeswarm (feature importance + 方向) ═══
-plt.figure(figsize=(12, 8))
+plt.figure(figsi ze=(12, 8))
 shap.summary_plot(shap_values, X, feature_names=REQUIRED, show=False, max_display=10)
 plt.tight_layout()
 plt.savefig("shap_1_summary_beeswarm.png", dpi=200, bbox_inches="tight")

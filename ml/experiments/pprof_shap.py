@@ -4,7 +4,6 @@ Professional SHAP Analysis — Elderly Fall Risk Model
 Produces clean, professional charts for publication/presentation.
 Coloured by feature value (red=high, blue=low) showing impact direction.
 """
-import os
 import pandas as pd, numpy as np, shap
 from sklearn.linear_model import LogisticRegression
 import matplotlib
@@ -23,7 +22,7 @@ plt.rcParams.update({
 })
 
 # ═══ Data ═══
-df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv"))
+df = pd.read_csv("fall_risk_patients_2000.csv")
 for c in ["high_risk_medication","orthostatic_hypotension"]:
     df[c] = df[c].map({True:1,False:0})
 

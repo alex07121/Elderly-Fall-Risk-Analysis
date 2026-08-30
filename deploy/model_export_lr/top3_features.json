@@ -1,0 +1,17 @@
+[
+  {
+    "feature": "high_risk_medication",
+    "meaning": "Uses high-risk medication (0/1)",
+    "lime_weight": 0.2256
+  },
+  {
+    "feature": "cognitive_impairment",
+    "meaning": "Cognitive impairment level (0-2)",
+    "lime_weight": 0.177
+  },
+  {
+    "feature": "past_falls",
+    "meaning": "Number of past falls",
+    "lime_weight": 0.1731
+  }
+]

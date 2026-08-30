@@ -1,0 +1,12 @@
+PHASE 2 — SHAP OVERFITTING TEST REPORT
+=============================================
+Fold 1 top-5: ['tug_seconds', 'age', 'past_falls', 'cognitive_impairment', 'high_risk_medication']
+Fold 2 top-5: ['tug_seconds', 'age', 'cognitive_impairment', 'past_falls', 'high_risk_medication']
+Fold 3 top-5: ['tug_seconds', 'age', 'cognitive_impairment', 'past_falls', 'high_risk_medication']
+Fold 4 top-5: ['tug_seconds', 'age', 'cognitive_impairment', 'past_falls', 'high_risk_medication']
+Fold 5 top-5: ['tug_seconds', 'age', 'cognitive_impairment', 'past_falls', 'high_risk_medication']
+
+Stable features (≥4 folds): ['tug_seconds', 'age', 'past_falls', 'cognitive_impairment', 'high_risk_medication']
+Accuracy: 0.8915 ± 0.0090
+HIGH recall: 0.9389 ± 0.0214
+Verdict: NO OVERFITTING

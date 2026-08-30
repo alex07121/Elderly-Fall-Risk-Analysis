@@ -109,19 +109,7 @@ def explain_patient(features: dict, max_features: int = 5) -> list:
     pred = str(_model.predict(row.reshape(1, -1))[0])
     label_idx = list(_model.classes_).index(pred)
 
-    # ``LimeTabularExplainer`` advances its internal random generator on every
-    # call.  Reusing the module-level instance made the same resident receive
-    # different weights after each page refresh.  Build an isolated explainer
-    # for each request so a stored explanation is reproducible and its ranking
-    # can be audited later.
-    explainer = lime.lime_tabular.LimeTabularExplainer(
-        training_data=_train,
-        feature_names=REQUIRED,
-        class_names=LABELS,
-        discretize_continuous=True,
-        random_state=42,
-    )
-    exp = explainer.explain_instance(
+    exp = _explainer.explain_instance(
         data_row=row, predict_fn=_model.predict_proba,
         num_features=len(REQUIRED), labels=[label_idx])
 

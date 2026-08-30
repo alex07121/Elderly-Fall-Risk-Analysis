@@ -1,5 +1,4 @@
 # Class Balance & Weight Distribution — 解釋點解 balanced 重要
-import os
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -10,7 +9,7 @@ plt.rcParams["font.sans-serif"] = ["PingFang HK", "Hiragino Sans GB", "Arial Uni
 plt.rcParams["axes.unicode_minus"] = False
 
 # ═══ Load data ═══
-df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "fall_risk_patients_2000_v2.csv"))
+df = pd.read_csv("fall_risk_patients_2000.csv")
 y = df["fall_risk_level"]
 
 ORDER = ["LOW", "MEDIUM", "HIGH"]
